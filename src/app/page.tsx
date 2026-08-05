@@ -1187,3 +1187,9 @@ export default function Home() {
     </main>
   );
 }
+function diasSemMovimentacao(dataUltimaMovimentacao: string): number {
+  const dataUltima = new Date(dataUltimaMovimentacao);
+  const hoje = new Date();
+  const diferencaEmMs = hoje.getTime() - dataUltima.getTime();
+  return Math.floor(diferencaEmMs / (1000 * 60 * 60 * 24));
+}
