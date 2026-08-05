@@ -51,6 +51,47 @@ export default function GestaoProcessos() {
   const [novaSenhaInput, setNovaSenhaInput] = useState('');
   const [confirmaSenhaInput, setConfirmaSenhaInput] = useState('');
 
+  // --- FUNÇÕES DE EXPORTAÇÃO INDIVIDUAL (CSV) ---
+  const baixarArquivoCSV = (conteudo: string, nomeArquivo: string) => {
+    const blob = new Blob(["\ufeff" + conteudo], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', nomeArquivo);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportarProcessosCSV = () => {
+    if (processos.length === 0) return alert('Nenhum processo para exportar.');
+    let conteudo = "CNJ;Reclamante;Reclamada;Forum;Vara;Valor Causa\n";
+    processos.forEach((p: any) => {
+      conteudo += `"${p.numero_cnj}";"${p.reclamante}";"${p.reclamada}";"${p.forum || ''}";"${p.vara || ''}";"${p.valor_causa}"\n`;
+    });
+    baixarArquivoCSV(conteudo, `processos_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  const exportarPrazosCSV = () => {
+    if (prazos.length === 0) return alert('Nenhum prazo para exportar.');
+    let conteudo = "Processo (CNJ);Titulo;Data Vencimento\n";
+    prazos.forEach((pz: any) => {
+      const proc = processos.find((p: any) => p.id === pz.processo_id);
+      conteudo += `"${proc?.numero_cnj || 'N/A'}";"${pz.titulo}";"${pz.data_vencimento}"\n`;
+    });
+    baixarArquivoCSV(conteudo, `prazos_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  const exportarHonorariosCSV = () => {
+    if (honorarios.length === 0) return alert('Nenhum honorário para exportar.');
+    let conteudo = "Processo (CNJ);Tipo;Valor;Vencimento;Status\n";
+    honorarios.forEach((h: any) => {
+      const proc = processos.find((p: any) => p.id === h.processo_id);
+      conteudo += `"${proc?.numero_cnj || 'N/A'}";"${h.tipo}";"${h.valor}";"${h.data_vencimento}";"${h.status_pagamento}"\n`;
+    });
+    baixarArquivoCSV(conteudo, `honorarios_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
   // --- AUXILIARES E CÁLCULOS ---
   const calcularUrgencia = (dataStr: string) => {
     if (!dataStr) return { texto: 'Sem Data', badge: 'bg-slate-100 text-slate-700 border-slate-300', cardBorder: 'border-l-slate-300' };
@@ -241,7 +282,7 @@ export default function GestaoProcessos() {
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">Painel de Gestão Pericial</h1>
             <p className="text-xs text-slate-500 mt-1">Gerenciamento de processos, prazos, andamentos e honorários</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setModalTodosPrazosAberto(true)} className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2 px-4 rounded-xl transition shadow-sm">
               Ver Todos os Prazos
             </button>
@@ -330,9 +371,14 @@ export default function GestaoProcessos() {
           {/* FORM 4: HONORÁRIO */}
           <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">
-                {editHonorarioId ? 'Editar Honorário' : 'Novo Honorário'}
-              </h2>
+              <div className="flex justify-between items-center mb-4 border-b pb-2 border-slate-100">
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  {editHonorarioId ? 'Editar Honorário' : 'Novo Honorário'}
+                </h2>
+                <button type="button" onClick={exportarHonorariosCSV} className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-semibold transition">
+                  📥 CSV
+                </button>
+              </div>
               <form onSubmit={handleSalvarHonorario} className="flex flex-col gap-2.5">
                 <select value={processoIdHonorario} onChange={(e) => setProcessoIdHonorario(e.target.value)} required className="p-2.5 border border-slate-300 rounded-lg text-xs bg-slate-50">
                   <option value="">-- Selecione o Processo --</option>
@@ -366,13 +412,18 @@ export default function GestaoProcessos() {
               <h2 className="text-lg font-bold text-slate-900">Processos Cadastrados</h2>
               <p className="text-xs text-slate-500">Listagem geral e busca avançada de processos</p>
             </div>
-            <input
-              type="text"
-              placeholder="🔍 Buscar por CNJ, Reclamante ou Reclamada..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="w-full sm:w-80 p-2.5 border border-slate-300 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
-            />
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <button onClick={exportarProcessosCSV} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl transition border border-slate-200">
+                📥 Exportar Processos (CSV)
+              </button>
+              <input
+                type="text"
+                placeholder="🔍 Buscar por CNJ, Reclamante..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="w-full sm:w-72 p-2.5 border border-slate-300 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -497,7 +548,12 @@ export default function GestaoProcessos() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center pb-4 border-b border-slate-200">
               <h2 className="text-lg font-bold text-slate-900">Todos os Prazos Cadastrados</h2>
-              <button onClick={() => setModalTodosPrazosAberto(false)} className="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+              <div className="flex gap-2">
+                <button onClick={exportarPrazosCSV} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-1.5 px-3 rounded-lg border border-slate-200 transition">
+                  📥 Exportar Prazos (CSV)
+                </button>
+                <button onClick={() => setModalTodosPrazosAberto(false)} className="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+              </div>
             </div>
 
             <div className="flex gap-2 my-4">
