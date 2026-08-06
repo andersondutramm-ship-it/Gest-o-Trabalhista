@@ -20,6 +20,9 @@ export default function GestaoPrazos() {
   const [vencimento, setVencimento] = useState<string>('');
   const [salvando, setSalvando] = useState<boolean>(false);
 
+  // Estado para Edição de Prazo
+  const [prazoEditando, setPrazoEditando] = useState<any | null>(null);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -60,7 +63,7 @@ export default function GestaoPrazos() {
     }
   }, [session]);
 
-  // ALTERAR STATUS CONCLUÍDO
+  // MARCAR / DESMARCAR COMO CONCLUÍDO
   async function handleToggleConcluido(id: string, concluidoAtual: boolean) {
     try {
       const { error } = await supabase
@@ -100,6 +103,33 @@ export default function GestaoPrazos() {
       carregarDados();
     } catch (err: any) {
       alert('Erro ao lançar prazo: ' + err.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  // ATUALIZAR PRAZO EXISTENTE
+  async function handleSalvarEdicao(e: React.FormEvent) {
+    e.preventDefault();
+    if (!prazoEditando) return;
+
+    try {
+      setSalvando(true);
+      const { error } = await supabase
+        .from('prazos')
+        .update({
+          titulo: prazoEditando.titulo,
+          vencimento: prazoEditando.vencimento,
+          processo_id: prazoEditando.processo_id
+        })
+        .eq('id', prazoEditando.id);
+
+      if (error) throw error;
+
+      setPrazoEditando(null);
+      carregarDados();
+    } catch (err: any) {
+      alert('Erro ao atualizar prazo: ' + err.message);
     } finally {
       setSalvando(false);
     }
@@ -287,7 +317,13 @@ export default function GestaoPrazos() {
                         <td className="p-4 font-semibold text-slate-800">
                           {new Date(item.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
                         </td>
-                        <td className="p-4 text-right space-x-2">
+                        <td className="p-4 text-right space-x-3">
+                          <button
+                            onClick={() => setPrazoEditando(item)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            Editar
+                          </button>
                           <button
                             onClick={() => handleExcluirPrazo(item.id)}
                             className="text-xs text-red-500 hover:text-red-700 font-medium"
@@ -305,6 +341,73 @@ export default function GestaoPrazos() {
         </div>
 
       </div>
+
+      {/* MODAL DE EDIÇÃO DE PRAZO */}
+      {prazoEditando && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Editar Prazo</h3>
+
+            <form onSubmit={handleSalvarEdicao} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Processo</label>
+                <select
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                  value={prazoEditando.processo_id}
+                  onChange={(e) => setPrazoEditando({ ...prazoEditando, processo_id: e.target.value })}
+                  required
+                >
+                  <option value="">-- Selecione o Processo --</option>
+                  {processos.map(proc => (
+                    <option key={proc.id} value={proc.id}>
+                      {proc.numero ? `${proc.numero} - ${proc.reclamante || ''}` : proc.reclamante || 'Sem número'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Título do Prazo</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm"
+                  value={prazoEditando.titulo}
+                  onChange={(e) => setPrazoEditando({ ...prazoEditando, titulo: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Vencimento</label>
+                <input
+                  type="date"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm"
+                  value={prazoEditando.vencimento}
+                  onChange={(e) => setPrazoEditando({ ...prazoEditando, vencimento: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPrazoEditando(null)}
+                  className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {salvando ? 'Salvando...' : 'Salvar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
