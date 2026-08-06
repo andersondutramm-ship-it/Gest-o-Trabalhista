@@ -5,38 +5,84 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 export default function GestaoProcessos() {
-  // --- ESTADOS DOS DADOS ---
   const [processos, setProcessos] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
+  
+  // Modal de cadastro
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [novoProcesso, setNovoProcesso] = useState({
+    numero: '',
+    reclamante: '',
+    reclamada: '',
+    status: 'Em andamento'
+  });
 
-  // --- BUSCAR DADOS DO SUPABASE ---
-  useEffect(() => {
-    async function carregarProcessos() {
-      try {
-        setLoading(true);
-        setErro(null);
+  // CARREGAR DADOS DO SUPABASE
+  async function carregarProcessos() {
+    try {
+      setLoading(true);
+      setErro(null);
 
-        const { data, error } = await supabase
-          .from('processos')
-          .select('*')
-          .order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('processos')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-        if (error) {
-          throw error;
-        }
-
-        setProcessos(data || []);
-      } catch (err: any) {
-        console.error('Erro ao carregar processos:', err.message);
-        setErro('Não foi possível carregar os processos.');
-      } finally {
-        setLoading(false);
-      }
+      if (error) throw error;
+      setProcessos(data || []);
+    } catch (err: any) {
+      console.error('Erro ao carregar processos:', err.message);
+      setErro('Não foi possível carregar os processos do banco.');
+    } finally {
+      setLoading(false);
     }
+  }
 
+  useEffect(() => {
     carregarProcessos();
   }, []);
+
+  // ADICIONAR NOVO PROCESSO
+  async function handleSalvarProcesso(e: React.FormEvent) {
+    e.preventDefault();
+    if (!novoProcesso.numero) return;
+
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('processos')
+        .insert([novoProcesso]);
+
+      if (error) throw error;
+
+      setNovoProcesso({ numero: '', reclamante: '', reclamada: '', status: 'Em andamento' });
+      setShowModal(false);
+      carregarProcessos();
+    } catch (err: any) {
+      alert('Erro ao salvar processo: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // EXCLUIR PROCESSO
+  async function handleExcluir(id: string) {
+    if (!confirm('Deseja realmente excluir este processo?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('processos')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      carregarProcessos();
+    } catch (err: any) {
+      alert('Erro ao excluir processo: ' + err.message);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
@@ -55,6 +101,32 @@ export default function GestaoProcessos() {
             >
               Ver Prazos
             </Link>
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-sm"
+            >
+              + Novo Processo
+            </button>
+          </div>
+        </div>
+
+        {/* CARDS DE RESUMO */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Processos</span>
+            <p className="text-2xl font-bold text-slate-800 mt-1">{processos.length}</p>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Em Andamento</span>
+            <p className="text-2xl font-bold text-blue-600 mt-1">
+              {processos.filter(p => p.status === 'Em andamento' || !p.status).length}
+            </p>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Encerrados</span>
+            <p className="text-2xl font-bold text-emerald-600 mt-1">
+              {processos.filter(p => p.status === 'Encerrado').length}
+            </p>
           </div>
         </div>
 
@@ -65,19 +137,23 @@ export default function GestaoProcessos() {
           </div>
         )}
 
-        {/* LISTAGEM / TABELA DE PROCESSOS */}
+        {/* TABELA DE PROCESSOS */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
+          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-slate-800">Processos Cadastrados</h2>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-slate-500">
-              Carregando processos...
-            </div>
+            <div className="p-8 text-center text-slate-500">Carregando processos...</div>
           ) : processos.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">
-              Nenhum processo encontrado.
+            <div className="p-12 text-center space-y-3">
+              <p className="text-slate-500 text-base">Nenhum processo encontrado no banco de dados.</p>
+              <button
+                onClick={() => setShowModal(true)}
+                className="px-4 py-2 bg-blue-50 text-blue-600 font-medium rounded-lg hover:bg-blue-100 text-sm"
+              >
+                Cadastrar o primeiro processo
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -88,6 +164,7 @@ export default function GestaoProcessos() {
                     <th className="p-4 font-semibold">Reclamante</th>
                     <th className="p-4 font-semibold">Reclamada</th>
                     <th className="p-4 font-semibold">Status</th>
+                    <th className="p-4 font-semibold text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -97,9 +174,21 @@ export default function GestaoProcessos() {
                       <td className="p-4 text-slate-600">{proc.reclamante || '-'}</td>
                       <td className="p-4 text-slate-600">{proc.reclamada || '-'}</td>
                       <td className="p-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          proc.status === 'Encerrado' 
+                            ? 'bg-emerald-50 text-emerald-700' 
+                            : 'bg-blue-50 text-blue-700'
+                        }`}>
                           {proc.status || 'Em andamento'}
                         </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => handleExcluir(proc.id)}
+                          className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50"
+                        >
+                          Excluir
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -110,6 +199,80 @@ export default function GestaoProcessos() {
         </div>
 
       </div>
+
+      {/* MODAL DE CADASTRO */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Novo Processo</h3>
+            
+            <form onSubmit={handleSalvarProcesso} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Número do Processo *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="0000000-00.2026.5.02.0000"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={novoProcesso.numero}
+                  onChange={(e) => setNovoProcesso({ ...novoProcesso, numero: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Reclamante</label>
+                <input
+                  type="text"
+                  placeholder="Nome do reclamante"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={novoProcesso.reclamante}
+                  onChange={(e) => setNovoProcesso({ ...novoProcesso, reclamante: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Reclamada</label>
+                <input
+                  type="text"
+                  placeholder="Nome da empresa / reclamada"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={novoProcesso.reclamada}
+                  onChange={(e) => setNovoProcesso({ ...novoProcesso, reclamada: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                <select
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={novoProcesso.status}
+                  onChange={(e) => setNovoProcesso({ ...novoProcesso, status: e.target.value })}
+                >
+                  <option value="Em andamento">Em andamento</option>
+                  <option value="Encerrado">Encerrado</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? 'Salvando...' : 'Cadastrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
