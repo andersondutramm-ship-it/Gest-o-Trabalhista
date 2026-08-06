@@ -5,6 +5,16 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 export default function GestaoProcessos() {
+  const [session, setSession] = useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
+
+  // Estados de Autenticação
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Estados dos Processos
   const [processos, setProcessos] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -16,8 +26,24 @@ export default function GestaoProcessos() {
     numero: '',
     reclamante: '',
     reclamada: '',
+    valor_causa: '',
+    honorarios: '',
     status: 'Em andamento'
   });
+
+  // VERIFICAR SESSÃO DO USUÁRIO
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoadingAuth(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // CARREGAR DADOS DO SUPABASE
   async function carregarProcessos() {
@@ -41,8 +67,34 @@ export default function GestaoProcessos() {
   }
 
   useEffect(() => {
-    carregarProcessos();
-  }, []);
+    if (session) {
+      carregarProcessos();
+    }
+  }, [session]);
+
+  // LOGIN E CADASTRO
+  async function handleAuth(e: React.FormEvent) {
+    e.preventDefault();
+    setAuthError(null);
+
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        alert('Cadastro realizado! Verifique seu e-mail se a confirmação estiver ativada.');
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+  }
+
+  // LOGOUT
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
 
   // ADICIONAR NOVO PROCESSO
   async function handleSalvarProcesso(e: React.FormEvent) {
@@ -53,11 +105,15 @@ export default function GestaoProcessos() {
       setSaving(true);
       const { error } = await supabase
         .from('processos')
-        .insert([novoProcesso]);
+        .insert([{
+          ...novoProcesso,
+          valor_causa: novoProcesso.valor_causa ? parseFloat(novoProcesso.valor_causa) : 0,
+          honorarios: novoProcesso.honorarios ? parseFloat(novoProcesso.honorarios) : 0
+        }]);
 
       if (error) throw error;
 
-      setNovoProcesso({ numero: '', reclamante: '', reclamada: '', status: 'Em andamento' });
+      setNovoProcesso({ numero: '', reclamante: '', reclamada: '', valor_causa: '', honorarios: '', status: 'Em andamento' });
       setShowModal(false);
       carregarProcessos();
     } catch (err: any) {
@@ -84,6 +140,106 @@ export default function GestaoProcessos() {
     }
   }
 
+  // EXPORTAR DADOS EM CSV
+  function handleExportarCSV() {
+    if (processos.length === 0) {
+      alert('Não há processos para exportar.');
+      return;
+    }
+
+    const headers = ['Numero', 'Reclamante', 'Reclamada', 'Valor da Causa (R$)', 'Honorarios (R$)', 'Status', 'Data de Criacao'];
+    const rows = processos.map(p => [
+      `"${p.numero || ''}"`,
+      `"${p.reclamante || ''}"`,
+      `"${p.reclamada || ''}"`,
+      `"${p.valor_causa || 0}"`,
+      `"${p.honorarios || 0}"`,
+      `"${p.status || ''}"`,
+      `"${p.created_at || ''}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `processos_trabalhistas_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  if (loadingAuth) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando...</div>;
+  }
+
+  // TELA DE LOGIN / SEGURANÇA
+  if (!session) {
+    return (
+      <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-xl shadow-md border border-slate-200 max-w-md w-full space-y-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-slate-800">Gestão Trabalhista</h1>
+            <p className="text-slate-500 text-sm mt-1">
+              {isSignUp ? 'Crie sua conta para acessar' : 'Acesse com seu e-mail e senha'}
+            </p>
+          </div>
+
+          {authError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-xs">
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail</label>
+              <input
+                type="email"
+                required
+                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Senha</label>
+              <input
+                type="password"
+                required
+                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 text-sm transition-colors"
+            >
+              {isSignUp ? 'Cadastrar Conta' : 'Entrar no Sistema'}
+            </button>
+          </form>
+
+          <div className="text-center pt-2">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-xs text-blue-600 hover:underline font-medium"
+            >
+              {isSignUp ? 'Já tem uma conta? Entre aqui' : 'Não tem conta? Cadastre-se'}
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // TELA PRINCIPAL
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -92,9 +248,15 @@ export default function GestaoProcessos() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Gestão Trabalhista</h1>
-            <p className="text-slate-500 text-sm">Acompanhamento e controle de processos judiciais</p>
+            <p className="text-slate-500 text-sm">Usuário: {session.user.email}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleExportarCSV}
+              className="px-4 py-2 bg-emerald-50 text-emerald-700 font-medium rounded-lg hover:bg-emerald-100 transition-colors text-sm border border-emerald-200"
+            >
+              Exportar CSV
+            </button>
             <Link 
               href="/prazos"
               className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors text-sm"
@@ -107,11 +269,17 @@ export default function GestaoProcessos() {
             >
               + Novo Processo
             </button>
+            <button
+              onClick={handleLogout}
+              className="px-3 py-2 bg-slate-100 text-slate-500 font-medium rounded-lg hover:bg-slate-200 transition-colors text-sm"
+            >
+              Sair
+            </button>
           </div>
         </div>
 
         {/* CARDS DE RESUMO */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Processos</span>
             <p className="text-2xl font-bold text-slate-800 mt-1">{processos.length}</p>
@@ -123,9 +291,15 @@ export default function GestaoProcessos() {
             </p>
           </div>
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Encerrados</span>
-            <p className="text-2xl font-bold text-emerald-600 mt-1">
-              {processos.filter(p => p.status === 'Encerrado').length}
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Valor da Causa</span>
+            <p className="text-xl font-bold text-slate-800 mt-1">
+              R$ {processos.reduce((acc, p) => acc + (Number(p.valor_causa) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Honorários</span>
+            <p className="text-xl font-bold text-emerald-600 mt-1">
+              R$ {processos.reduce((acc, p) => acc + (Number(p.honorarios) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           </div>
         </div>
@@ -160,9 +334,11 @@ export default function GestaoProcessos() {
               <table className="w-full text-left text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                    <th className="p-4 font-semibold">Número do Processo</th>
+                    <th className="p-4 font-semibold">Número</th>
                     <th className="p-4 font-semibold">Reclamante</th>
                     <th className="p-4 font-semibold">Reclamada</th>
+                    <th className="p-4 font-semibold">Valor da Causa</th>
+                    <th className="p-4 font-semibold">Honorários</th>
                     <th className="p-4 font-semibold">Status</th>
                     <th className="p-4 font-semibold text-right">Ações</th>
                   </tr>
@@ -173,6 +349,12 @@ export default function GestaoProcessos() {
                       <td className="p-4 font-medium text-slate-800">{proc.numero || 'N/A'}</td>
                       <td className="p-4 text-slate-600">{proc.reclamante || '-'}</td>
                       <td className="p-4 text-slate-600">{proc.reclamada || '-'}</td>
+                      <td className="p-4 text-slate-600">
+                        {proc.valor_causa ? `R$ ${Number(proc.valor_causa).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                      </td>
+                      <td className="p-4 text-emerald-600 font-medium">
+                        {proc.honorarios ? `R$ ${Number(proc.honorarios).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                      </td>
                       <td className="p-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           proc.status === 'Encerrado' 
@@ -206,7 +388,7 @@ export default function GestaoProcessos() {
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
             <h3 className="text-lg font-bold text-slate-800">Novo Processo</h3>
             
-            <form onSubmit={handleSalvarProcesso} className="space-y-4">
+            <form onSubmit={handleSalvarProcesso} className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Número do Processo *</label>
                 <input
@@ -239,6 +421,31 @@ export default function GestaoProcessos() {
                   value={novoProcesso.reclamada}
                   onChange={(e) => setNovoProcesso({ ...novoProcesso, reclamada: e.target.value })}
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Valor da Causa (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={novoProcesso.valor_causa}
+                    onChange={(e) => setNovoProcesso({ ...novoProcesso, valor_causa: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Honorários (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={novoProcesso.honorarios}
+                    onChange={(e) => setNovoProcesso({ ...novoProcesso, honorarios: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div>
