@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 
 export default function GestaoProcessos() {
   // --- ESTADOS DOS DADOS ---
@@ -9,51 +10,31 @@ export default function GestaoProcessos() {
   const [prazos, setPrazos] = useState<any[]>([]);
   const [andamentos, setAndamentos] = useState<any[]>([]);
   const [honorarios, setHonorarios] = useState<any[]>([]);
-  const [carregado, setCarregado] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
-  // --- CARREGAR DADOS DO LOCALSTORAGE AO INICIAR ---
-  useEffect(() => {
+  // --- BUSCAR DADOS DO SUPABASE AO CARREGAR ---
+  const carregarDados = async () => {
+    setCarregando(true);
     try {
-      const procSalvos = localStorage.getItem('processos_data');
-      const prazosSalvos = localStorage.getItem('prazos_data');
-      const andamentosSalvos = localStorage.getItem('andamentos_data');
-      const honorariosSalvos = localStorage.getItem('honorarios_data');
+      const { data: procData } = await supabase.from('processos').select('*').order('created_at', { ascending: false });
+      const { data: prazosData } = await supabase.from('prazos').select('*');
+      const { data: andamData } = await supabase.from('andamentos').select('*');
+      const { data: honorData } = await supabase.from('honorarios').select('*');
 
-      if (procSalvos) setProcessos(JSON.parse(procSalvos));
-      if (prazosSalvos) setPrazos(JSON.parse(prazosSalvos));
-      if (andamentosSalvos) setAndamentos(JSON.parse(andamentosSalvos));
-      if (honorariosSalvos) setHonorarios(JSON.parse(honorariosSalvos));
-    } catch (e) {
-      console.error('Erro ao carregar do localStorage', e);
+      if (procData) setProcessos(procData);
+      if (prazosData) setPrazos(prazosData);
+      if (andamData) setAndamentos(andamData);
+      if (honorData) setHonorarios(honorData);
+    } catch (error) {
+      console.error('Erro ao carregar dados do Supabase:', error);
     } finally {
-      setCarregado(true);
+      setCarregando(false);
     }
+  };
+
+  useEffect(() => {
+    carregarDados();
   }, []);
-
-  // --- SALVAR NO LOCALSTORAGE SEMPRE QUE OS DADOS MUDAREM ---
-  useEffect(() => {
-    if (carregado) {
-      localStorage.setItem('processos_data', JSON.stringify(processos));
-    }
-  }, [processos, carregado]);
-
-  useEffect(() => {
-    if (carregado) {
-      localStorage.setItem('prazos_data', JSON.stringify(prazos));
-    }
-  }, [prazos, carregado]);
-
-  useEffect(() => {
-    if (carregado) {
-      localStorage.setItem('andamentos_data', JSON.stringify(andamentos));
-    }
-  }, [andamentos, carregado]);
-
-  useEffect(() => {
-    if (carregado) {
-      localStorage.setItem('honorarios_data', JSON.stringify(honorarios));
-    }
-  }, [honorarios, carregado]);
 
   // --- ESTADOS DE BUSCA E MODAIS ---
   const [busca, setBusca] = useState('');
@@ -75,66 +56,37 @@ export default function GestaoProcessos() {
   const [vencimentoPrazo, setVencimentoPrazo] = useState('');
 
   // --- FORMULÁRIO DE ANDAMENTO ---
-  const [editAndamentoId, setEditAndamentoId] = useState<string | null>(null);
   const [processoIdAndamento, setProcessoIdAndamento] = useState('');
   const [tituloAndamento, setTituloAndamento] = useState('');
   const [descricaoAndamento, setDescricaoAndamento] = useState('');
 
   // --- FORMULÁRIO DE HONORÁRIO ---
-  const [editHonorarioId, setEditHonorarioId] = useState<string | null>(null);
   const [processoIdHonorario, setProcessoIdHonorario] = useState('');
   const [tipoHonorario, setTipoHonorario] = useState('');
   const [valorHonorario, setValorHonorario] = useState('');
   const [vencimentoHonorario, setVencimentoHonorario] = useState('');
   const [statusPagamento, setStatusPagamento] = useState('Pendente');
 
-  // --- SEGURANÇA / SENHA ---
-  const [novaSenhaInput, setNovaSenhaInput] = useState('');
-  const [confirmaSenhaInput, setConfirmaSenhaInput] = useState('');
-
-  // --- EXPORTAÇÃO CSV ---
-  const baixarArquivoCSV = (conteudo: string, nomeArquivo: string) => {
-    const blob = new Blob(["\ufeff" + conteudo], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = nomeArquivo;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const exportarProcessosCSV = () => {
-    if (processos.length === 0) return alert('Nenhum processo para exportar.');
-    let conteudo = "CNJ;Reclamante;Reclamada;Forum;Vara;Valor Causa\n";
-    processos.forEach((p: any) => {
-      conteudo += `"${p.numero_cnj}";"${p.reclamante}";"${p.reclamada}";"${p.forum || ''}";"${p.vara || ''}";"${p.valor_causa}"\n`;
-    });
-    baixarArquivoCSV(conteudo, `processos_${new Date().toISOString().slice(0, 10)}.csv`);
-  };
-
-  const exportarHonorariosCSV = () => {
-    if (honorarios.length === 0) return alert('Nenhum honorário para exportar.');
-    let conteudo = "Processo (CNJ);Tipo;Valor;Vencimento;Status\n";
-    honorarios.forEach((h: any) => {
-      const proc = processos.find((p: any) => p.id === h.processo_id);
-      conteudo += `"${proc?.numero_cnj || 'N/A'}";"${h.tipo}";"${h.valor}";"${h.data_vencimento}";"${h.status_pagamento}"\n`;
-    });
-    baixarArquivoCSV(conteudo, `honorarios_${new Date().toISOString().slice(0, 10)}.csv`);
-  };
-
-  // --- HANDLERS ---
-  const handleSalvarProcesso = (e: React.FormEvent) => {
+  // --- HANDLERS COM SUPABASE ---
+  const handleSalvarProcesso = async (e: React.FormEvent) => {
     e.preventDefault();
+    const dados = {
+      numero_cnj: numeroCnj,
+      reclamante,
+      reclamada,
+      forum,
+      vara,
+      valor_causa: parseFloat(valorCausa) || 0,
+    };
+
     if (editProcessoId) {
-      setProcessos(processos.map(p => p.id === editProcessoId ? {
-        ...p, numero_cnj: numeroCnj, reclamante, reclamada, forum, vara, valor_causa: parseFloat(valorCausa) || 0
-      } : p));
+      await supabase.from('processos').update(dados).eq('id', editProcessoId);
     } else {
-      const novo = { id: Date.now().toString(), numero_cnj: numeroCnj, reclamante, reclamada, forum, vara, valor_causa: parseFloat(valorCausa) || 0 };
-      setProcessos([...processos, novo]);
+      await supabase.from('processos').insert([dados]);
     }
+
     limparFormProcesso();
+    carregarDados();
   };
 
   const limparFormProcesso = () => {
@@ -157,63 +109,61 @@ export default function GestaoProcessos() {
     setValorCausa(proc.valor_causa ? proc.valor_causa.toString() : '');
   };
 
-  const excluirProcesso = (id: string) => {
+  const excluirProcesso = async (id: string) => {
     if (confirm('Deseja realmente excluir este processo e todos os registros vinculados?')) {
-      setProcessos(processos.filter(p => p.id !== id));
-      setPrazos(prazos.filter(p => p.processo_id !== id));
-      setAndamentos(andamentos.filter(a => a.processo_id !== id));
-      setHonorarios(honorarios.filter(h => h.processo_id !== id));
+      await supabase.from('processos').delete().eq('id', id);
+      carregarDados();
     }
   };
 
-  const handleSalvarPrazo = (e: React.FormEvent) => {
+  const handleSalvarPrazo = async (e: React.FormEvent) => {
     e.preventDefault();
-    const novo = { id: Date.now().toString(), processo_id: processoIdPrazo, titulo: tituloPrazo, data_vencimento: vencimentoPrazo };
-    setPrazos([...prazos, novo]);
+    await supabase.from('prazos').insert([{
+      processo_id: processoIdPrazo,
+      titulo: tituloPrazo,
+      data_vencimento: vencimentoPrazo
+    }]);
+
     setProcessoIdPrazo('');
     setTituloPrazo('');
     setVencimentoPrazo('');
-    alert('Prazo cadastrado com sucesso!');
+    carregarDados();
+    alert('Prazo salvo na nuvem com sucesso!');
   };
 
-  const handleSalvarAndamento = (e: React.FormEvent) => {
+  const handleSalvarAndamento = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editAndamentoId) {
-      setAndamentos(andamentos.map(a => a.id === editAndamentoId ? { ...a, processo_id: processoIdAndamento, titulo: tituloAndamento, descricao: descricaoAndamento } : a));
-    } else {
-      setAndamentos([...andamentos, { id: Date.now().toString(), processo_id: processoIdAndamento, titulo: tituloAndamento, descricao: descricaoAndamento }]);
-    }
-    setEditAndamentoId(null);
+    await supabase.from('andamentos').insert([{
+      processo_id: processoIdAndamento,
+      titulo: tituloAndamento,
+      descricao: descricaoAndamento
+    }]);
+
     setProcessoIdAndamento('');
     setTituloAndamento('');
     setDescricaoAndamento('');
+    carregarDados();
   };
 
-  const handleSalvarHonorario = (e: React.FormEvent) => {
+  const handleSalvarHonorario = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editHonorarioId) {
-      setHonorarios(honorarios.map(h => h.id === editHonorarioId ? { ...h, processo_id: processoIdHonorario, tipo: tipoHonorario, valor: parseFloat(valorHonorario) || 0, data_vencimento: vencimentoHonorario, status_pagamento: statusPagamento } : h));
-    } else {
-      setHonorarios([...honorarios, { id: Date.now().toString(), processo_id: processoIdHonorario, tipo: tipoHonorario, valor: parseFloat(valorHonorario) || 0, data_vencimento: vencimentoHonorario, status_pagamento: statusPagamento }]);
-    }
-    setEditHonorarioId(null);
+    await supabase.from('honorarios').insert([{
+      processo_id: processoIdHonorario,
+      tipo: tipoHonorario,
+      valor: parseFloat(valorHonorario) || 0,
+      data_vencimento: vencimentoHonorario,
+      status_pagamento: statusPagamento
+    }]);
+
     setProcessoIdHonorario('');
     setTipoHonorario('');
     setValorHonorario('');
     setVencimentoHonorario('');
     setStatusPagamento('Pendente');
+    carregarDados();
   };
 
-  const handleTrocarSenha = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (novaSenhaInput !== confirmaSenhaInput) return alert('As senhas não coincidem!');
-    alert('Senha alterada com sucesso!');
-    setNovaSenhaInput('');
-    setConfirmaSenhaInput('');
-    setModalSenhaAberto(false);
-  };
-
-  const processosFiltrados = processos.filter(p => 
+  const processosFiltrados = processos.filter(p =>
     p.numero_cnj.toLowerCase().includes(busca.toLowerCase()) ||
     p.reclamante.toLowerCase().includes(busca.toLowerCase()) ||
     p.reclamada.toLowerCase().includes(busca.toLowerCase())
@@ -227,7 +177,7 @@ export default function GestaoProcessos() {
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">Painel de Gestão de Processos</h1>
-            <p className="text-xs text-slate-500 mt-1">Gerenciamento de processos, prazos, andamentos e honorários</p>
+            <p className="text-xs text-slate-500 mt-1">Conectado ao Supabase (Banco em Nuvem)</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link 
@@ -236,123 +186,99 @@ export default function GestaoProcessos() {
             >
               📅 Gerenciar & Editar Prazos
             </Link>
-            <button onClick={() => setModalSenhaAberto(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2 px-4 rounded-xl transition border border-slate-200">
-              Segurança
-            </button>
           </div>
         </header>
 
-        {/* GRID DE FORMULÁRIOS */}
+        {/* FORMULÁRIOS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           
-          {/* FORM 1: PROCESSO */}
-          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">
-                {editProcessoId ? 'Editar Processo' : 'Novo Processo'}
-              </h2>
-              <form onSubmit={handleSalvarProcesso} className="flex flex-col gap-2.5">
-                <input type="text" placeholder="Número CNJ" value={numeroCnj} onChange={(e) => setNumeroCnj(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="text" placeholder="Reclamante" value={reclamante} onChange={(e) => setReclamante(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="text" placeholder="Reclamada" value={reclamada} onChange={(e) => setReclamada(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="text" placeholder="Fórum" value={forum} onChange={(e) => setForum(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="text" placeholder="Vara" value={vara} onChange={(e) => setVara(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="number" step="0.01" placeholder="Valor da Causa (R$)" value={valorCausa} onChange={(e) => setValorCausa(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">
-                  {editProcessoId ? 'Atualizar Processo' : 'Cadastrar Processo'}
-                </button>
-                {editProcessoId && (
-                  <button type="button" onClick={limparFormProcesso} className="bg-slate-200 text-slate-700 text-xs py-1.5 rounded-lg">Cancelar</button>
-                )}
-              </form>
-            </div>
+          {/* FORM PROCESSO */}
+          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">
+              {editProcessoId ? 'Editar Processo' : 'Novo Processo'}
+            </h2>
+            <form onSubmit={handleSalvarProcesso} className="flex flex-col gap-2.5">
+              <input type="text" placeholder="Número CNJ" value={numeroCnj} onChange={(e) => setNumeroCnj(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="text" placeholder="Reclamante" value={reclamante} onChange={(e) => setReclamante(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="text" placeholder="Reclamada" value={reclamada} onChange={(e) => setReclamada(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="text" placeholder="Fórum" value={forum} onChange={(e) => setForum(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="text" placeholder="Vara" value={vara} onChange={(e) => setVara(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="number" step="0.01" placeholder="Valor da Causa (R$)" value={valorCausa} onChange={(e) => setValorCausa(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">
+                {editProcessoId ? 'Atualizar Processo' : 'Cadastrar Processo'}
+              </button>
+            </form>
           </section>
 
-          {/* FORM 2: PRAZO */}
-          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">Novo Prazo</h2>
-              <form onSubmit={handleSalvarPrazo} className="flex flex-col gap-2.5">
-                <select value={processoIdPrazo} onChange={(e) => setProcessoIdPrazo(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50">
-                  <option value="">-- Selecione o Processo --</option>
-                  {processos.map((proc) => (
-                    <option key={proc.id} value={proc.id}>{proc.numero_cnj} - {proc.reclamante}</option>
-                  ))}
-                </select>
-                <input type="text" placeholder="Título do Prazo" value={tituloPrazo} onChange={(e) => setTituloPrazo(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="date" value={vencimentoPrazo} onChange={(e) => setVencimentoPrazo(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">Lançar Prazo</button>
-              </form>
-            </div>
+          {/* FORM PRAZO */}
+          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">Novo Prazo</h2>
+            <form onSubmit={handleSalvarPrazo} className="flex flex-col gap-2.5">
+              <select value={processoIdPrazo} onChange={(e) => setProcessoIdPrazo(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50">
+                <option value="">-- Selecione o Processo --</option>
+                {processos.map((proc) => (
+                  <option key={proc.id} value={proc.id}>{proc.numero_cnj} - {proc.reclamante}</option>
+                ))}
+              </select>
+              <input type="text" placeholder="Título do Prazo" value={tituloPrazo} onChange={(e) => setTituloPrazo(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="date" value={vencimentoPrazo} onChange={(e) => setVencimentoPrazo(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">Lançar Prazo</button>
+            </form>
           </section>
 
-          {/* FORM 3: ANDAMENTO */}
-          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">Novo Andamento</h2>
-              <form onSubmit={handleSalvarAndamento} className="flex flex-col gap-2.5">
-                <select value={processoIdAndamento} onChange={(e) => setProcessoIdAndamento(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50">
-                  <option value="">-- Selecione o Processo --</option>
-                  {processos.map((proc) => (
-                    <option key={proc.id} value={proc.id}>{proc.numero_cnj} - {proc.reclamante}</option>
-                  ))}
-                </select>
-                <input type="text" placeholder="Título / Ocorrência" value={tituloAndamento} onChange={(e) => setTituloAndamento(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <textarea placeholder="Descrição breve..." value={descricaoAndamento} onChange={(e) => setDescricaoAndamento(e.target.value)} rows={3} className="p-2.5 border rounded-lg text-xs bg-slate-50 resize-none" />
-                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">Lançar Andamento</button>
-              </form>
-            </div>
+          {/* FORM ANDAMENTO */}
+          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">Novo Andamento</h2>
+            <form onSubmit={handleSalvarAndamento} className="flex flex-col gap-2.5">
+              <select value={processoIdAndamento} onChange={(e) => setProcessoIdAndamento(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50">
+                <option value="">-- Selecione o Processo --</option>
+                {processos.map((proc) => (
+                  <option key={proc.id} value={proc.id}>{proc.numero_cnj} - {proc.reclamante}</option>
+                ))}
+              </select>
+              <input type="text" placeholder="Título / Ocorrência" value={tituloAndamento} onChange={(e) => setTituloAndamento(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <textarea placeholder="Descrição breve..." value={descricaoAndamento} onChange={(e) => setDescricaoAndamento(e.target.value)} rows={3} className="p-2.5 border rounded-lg text-xs bg-slate-50 resize-none" />
+              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">Lançar Andamento</button>
+            </form>
           </section>
 
-          {/* FORM 4: HONORÁRIO */}
-          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-4 border-b pb-2 border-slate-100">
-                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Novo Honorário</h2>
-                <button type="button" onClick={exportarHonorariosCSV} className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-semibold transition">
-                  📥 CSV
-                </button>
-              </div>
-              <form onSubmit={handleSalvarHonorario} className="flex flex-col gap-2.5">
-                <select value={processoIdHonorario} onChange={(e) => setProcessoIdHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50">
-                  <option value="">-- Selecione o Processo --</option>
-                  {processos.map((proc) => (
-                    <option key={proc.id} value={proc.id}>{proc.numero_cnj} - {proc.reclamante}</option>
-                  ))}
-                </select>
-                <input type="text" placeholder="Tipo (ex: Prévia, Pericial)" value={tipoHonorario} onChange={(e) => setTipoHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="number" step="0.01" placeholder="Valor (R$)" value={valorHonorario} onChange={(e) => setValorHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <input type="date" value={vencimentoHonorario} onChange={(e) => setVencimentoHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
-                <select value={statusPagamento} onChange={(e) => setStatusPagamento(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50">
-                  <option value="Pendente">Pendente</option>
-                  <option value="Pago">Pago</option>
-                </select>
-                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">Lançar Honorário</button>
-              </form>
-            </div>
+          {/* FORM HONORÁRIO */}
+          <section className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 border-b pb-2 border-slate-100">Novo Honorário</h2>
+            <form onSubmit={handleSalvarHonorario} className="flex flex-col gap-2.5">
+              <select value={processoIdHonorario} onChange={(e) => setProcessoIdHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50">
+                <option value="">-- Selecione o Processo --</option>
+                {processos.map((proc) => (
+                  <option key={proc.id} value={proc.id}>{proc.numero_cnj} - {proc.reclamante}</option>
+                ))}
+              </select>
+              <input type="text" placeholder="Tipo (ex: Prévia, Pericial)" value={tipoHonorario} onChange={(e) => setTipoHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="number" step="0.01" placeholder="Valor (R$)" value={valorHonorario} onChange={(e) => setValorHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <input type="date" value={vencimentoHonorario} onChange={(e) => setVencimentoHonorario(e.target.value)} required className="p-2.5 border rounded-lg text-xs bg-slate-50" />
+              <select value={statusPagamento} onChange={(e) => setStatusPagamento(e.target.value)} className="p-2.5 border rounded-lg text-xs bg-slate-50">
+                <option value="Pendente">Pendente</option>
+                <option value="Pago">Pago</option>
+              </select>
+              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition mt-2">Lançar Honorário</button>
+            </form>
           </section>
 
         </div>
 
-        {/* LISTA DE PROCESSOS */}
+        {/* TABELA DE PROCESSOS */}
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 mb-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="text-lg font-bold text-slate-900">Processos Cadastrados</h2>
-              <p className="text-xs text-slate-500">Listagem geral e busca avançada de processos</p>
+              <p className="text-xs text-slate-500">Listagem em tempo real sincronizada via nuvem</p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <button onClick={exportarProcessosCSV} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl transition border border-slate-200">
-                📥 Exportar Processos (CSV)
-              </button>
-              <input
-                type="text"
-                placeholder="🔍 Buscar por CNJ, Reclamante..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                className="w-full sm:w-72 p-2.5 border rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="🔍 Buscar por CNJ, Reclamante..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full sm:w-72 p-2.5 border rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
+            />
           </div>
 
           <div className="overflow-x-auto">
@@ -368,9 +294,13 @@ export default function GestaoProcessos() {
                 </tr>
               </thead>
               <tbody className="divide-y text-xs">
-                {processosFiltrados.length === 0 ? (
+                {carregando ? (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-slate-400">Nenhum processo encontrado.</td>
+                    <td colSpan={6} className="py-6 text-center text-slate-400">Carregando processos da nuvem...</td>
+                  </tr>
+                ) : processosFiltrados.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-slate-400">Nenhum processo cadastrado na nuvem.</td>
                   </tr>
                 ) : (
                   processosFiltrados.map((proc) => (
@@ -382,7 +312,6 @@ export default function GestaoProcessos() {
                       <td className="py-3.5 px-4 font-medium text-slate-700">R$ {(proc.valor_causa || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => setProcessoDetalhe(proc)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-2.5 py-1 rounded text-[11px] transition">Detalhes</button>
                           <button onClick={() => prepararEdicaoProcesso(proc)} className="text-slate-600 hover:text-slate-900 font-medium text-[11px]">Editar</button>
                           <button onClick={() => excluirProcesso(proc.id)} className="text-rose-600 hover:text-rose-800 font-medium text-[11px]">Excluir</button>
                         </div>
@@ -396,43 +325,6 @@ export default function GestaoProcessos() {
         </section>
 
       </div>
-
-      {/* MODAL DETALHES DO PROCESSO */}
-      {processoDetalhe && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-start pb-4 border-b border-slate-200">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ficha do Processo</span>
-                <h2 className="text-xl font-bold text-slate-900 font-mono">{processoDetalhe.numero_cnj}</h2>
-              </div>
-              <button onClick={() => setProcessoDetalhe(null)} className="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 my-4 p-4 bg-slate-50 rounded-xl text-xs">
-              <div><span className="text-slate-400">Reclamante:</span> <p className="font-bold text-slate-800">{processoDetalhe.reclamante}</p></div>
-              <div><span className="text-slate-400">Reclamada:</span> <p className="font-bold text-slate-800">{processoDetalhe.reclamada}</p></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL SENHA */}
-      {modalSenhaAberto && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Alterar Senha</h2>
-            <form onSubmit={handleTrocarSenha} className="space-y-3">
-              <input type="password" placeholder="Nova Senha" value={novaSenhaInput} onChange={(e) => setNovaSenhaInput(e.target.value)} required className="w-full p-2.5 border rounded-lg text-xs" />
-              <input type="password" placeholder="Confirmar Nova Senha" value={confirmaSenhaInput} onChange={(e) => setConfirmaSenhaInput(e.target.value)} required className="w-full p-2.5 border rounded-lg text-xs" />
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="flex-1 bg-slate-900 text-white font-bold py-2 rounded-lg text-xs">Salvar</button>
-                <button type="button" onClick={() => setModalSenhaAberto(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-xs">Cancelar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
