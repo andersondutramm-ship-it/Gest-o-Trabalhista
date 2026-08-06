@@ -5,300 +5,304 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 export default function GestaoPrazos() {
+  const [session, setSession] = useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
+
   const [prazos, setPrazos] = useState<any[]>([]);
   const [processos, setProcessos] = useState<any[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [filtroStatus, setFiltroStatus] = useState('Todos');
-  const [busca, setBusca] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [filtroStatus, setFiltroStatus] = useState<string>('Todos');
+  const [busca, setBusca] = useState<string>('');
 
-  // Formulário de Prazo
-  const [editId, setEditId] = useState<string | null>(null);
-  const [processoId, setProcessoId] = useState('');
-  const [titulo, setTitulo] = useState('');
-  const [vencimento, setVencimento] = useState('');
-
-  // 1. CARREGAR DADOS DO SUPABASE (PRAZOS + PROCESSOS)
-  const carregarDados = async () => {
-    setCarregando(true);
-    try {
-      const { data: prazosData, error: errPrazos } = await supabase
-        .from('prazos')
-        .select('*')
-        .order('data_vencimento', { ascending: true });
-
-      const { data: procData, error: errProc } = await supabase
-        .from('processos')
-        .select('*');
-
-      if (errPrazos) console.error('Erro ao carregar prazos:', errPrazos);
-      if (errProc) console.error('Erro ao carregar processos:', errProc);
-
-      if (prazosData) setPrazos(prazosData);
-      if (procData) setProcessos(procData);
-    } catch (error) {
-      console.error('Erro geral ao conectar com o banco:', error);
-    } finally {
-      setCarregando(false);
-    }
-  };
+  // Formulário de Novo Prazo
+  const [processoId, setProcessoId] = useState<string>('');
+  const [titulo, setTitulo] = useState<string>('');
+  const [vencimento, setVencimento] = useState<string>('');
+  const [salvando, setSalvando] = useState<boolean>(false);
 
   useEffect(() => {
-    carregarDados();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoadingAuth(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // 2. BUSCAR DADOS DO PROCESSO VINCULADO
-  const obterDadosProcesso = (procId: string) => {
-    const proc = processos.find((p) => String(p.id) === String(procId));
-    if (!proc) {
-      return { cnj: 'Sem Processo Vinculado', reclamante: '-' };
+  async function carregarDados() {
+    try {
+      setLoading(true);
+
+      const { data: procData } = await supabase.from('processos').select('id, numero, reclamante');
+      setProcessos(procData || []);
+
+      const { data: prazosData, error } = await supabase
+        .from('prazos')
+        .select('*, processos(numero, reclamante)')
+        .order('vencimento', { ascending: true });
+
+      if (error) throw error;
+      setPrazos(prazosData || []);
+    } catch (err: any) {
+      console.error('Erro ao carregar prazos:', err.message);
+    } finally {
+      setLoading(false);
     }
-    return {
-      cnj: proc.numero_cnj || 'Sem CNJ',
-      reclamante: proc.reclamante || '-'
-    };
-  };
+  }
 
-  // 3. CALCULAR STATUS DINÂMICO BASEADO NO VENCIMENTO
-  const calcularStatus = (dataVencimento: string, statusBanco?: string) => {
-    if (statusBanco === 'Concluído') return 'Ok';
+  useEffect(() => {
+    if (session) {
+      carregarDados();
+    }
+  }, [session]);
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+  // ALTERAR STATUS CONCLUÍDO
+  async function handleToggleConcluido(id: string, concluidoAtual: boolean) {
+    try {
+      const { error } = await supabase
+        .from('prazos')
+        .update({ concluido: !concluidoAtual })
+        .eq('id', id);
 
-    const dataVenc = new Date(dataVencimento + 'T00:00:00');
+      if (error) throw error;
+      carregarDados();
+    } catch (err: any) {
+      alert('Erro ao atualizar o prazo: ' + err.message);
+    }
+  }
 
-    if (isNaN(dataVenc.getTime())) return 'Ok';
-
-    const diffDias = Math.ceil((dataVenc.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
-
-    if (diffDias < 0) return 'Vencido';
-    if (diffDias <= 3) return 'Crítico';
-    if (diffDias <= 7) return 'Atenção';
-    return 'Ok';
-  };
-
-  // 4. SALVAR / EDITAR PRAZO
-  const handleSalvarPrazo = async (e: React.FormEvent) => {
+  // CRIAR PRAZO
+  async function handleCriarPrazo(e: React.FormEvent) {
     e.preventDefault();
-
-    if (!processoId) {
-      alert('Selecione um processo válido para vincular o prazo.');
+    if (!processoId || !titulo || !vencimento) {
+      alert('Preencha todos os campos.');
       return;
     }
 
-    const payload = {
-      processo_id: processoId,
-      titulo,
-      data_vencimento: vencimento
-    };
+    try {
+      setSalvando(true);
+      const { error } = await supabase.from('prazos').insert([{
+        processo_id: processoId,
+        titulo,
+        vencimento,
+        concluido: false
+      }]);
 
-    if (editId) {
-      await supabase.from('prazos').update(payload).eq('id', editId);
-    } else {
-      await supabase.from('prazos').insert([payload]);
-    }
+      if (error) throw error;
 
-    limparFormulario();
-    carregarDados();
-  };
-
-  const prepararEdicao = (prazo: any) => {
-    setEditId(prazo.id);
-    setProcessoId(prazo.processo_id || '');
-    setTitulo(prazo.titulo || '');
-    setVencimento(prazo.data_vencimento || '');
-  };
-
-  const excluirPrazo = async (id: string) => {
-    if (confirm('Deseja realmente excluir este prazo?')) {
-      await supabase.from('prazos').delete().eq('id', id);
+      setTitulo('');
+      setVencimento('');
+      setProcessoId('');
       carregarDados();
+    } catch (err: any) {
+      alert('Erro ao lançar prazo: ' + err.message);
+    } finally {
+      setSalvando(false);
     }
-  };
+  }
 
-  const limparFormulario = () => {
-    setEditId(null);
-    setProcessoId('');
-    setTitulo('');
-    setVencimento('');
-  };
+  // EXCLUIR PRAZO
+  async function handleExcluirPrazo(id: string) {
+    if (!confirm('Deseja excluir este prazo?')) return;
+    try {
+      const { error } = await supabase.from('prazos').delete().eq('id', id);
+      if (error) throw error;
+      carregarDados();
+    } catch (err: any) {
+      alert('Erro ao excluir prazo: ' + err.message);
+    }
+  }
 
-  // 5. FILTRAGEM
-  const prazosCompletos = prazos.map((p) => {
-    const infoProc = obterDadosProcesso(p.processo_id);
-    const st = calcularStatus(p.data_vencimento, p.status);
-    return { ...p, ...infoProc, statusCalculado: st };
+  // CÁLCULO DE STATUS DO PRAZO
+  function getStatusPrazo(vencimentoStr: string, concluido: boolean) {
+    if (concluido) return { label: 'CONCLUÍDO', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const dataVenc = new Date(vencimentoStr + 'T00:00:00');
+
+    const diffDias = Math.ceil((dataVenc.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
+
+    if (diffDias < 0) return { label: 'VENCIDO', color: 'bg-red-100 text-red-800 border-red-200' };
+    if (diffDias <= 2) return { label: 'CRÍTICO', color: 'bg-red-50 text-red-600 border-red-200' };
+    if (diffDias <= 5) return { label: 'ATENÇÃO', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+    return { label: 'OK', color: 'bg-blue-50 text-blue-700 border-blue-200' };
+  }
+
+  // FILTRAGEM
+  const prazosFiltrados = prazos.filter(p => {
+    const status = getStatusPrazo(p.vencimento, p.concluido).label;
+    const matchFiltro = 
+      filtroStatus === 'Todos' ||
+      (filtroStatus === 'Concluídos' && p.concluido) ||
+      (filtroStatus === 'Crítico' && status === 'CRÍTICO') ||
+      (filtroStatus === 'Atenção' && status === 'ATENÇÃO') ||
+      (filtroStatus === 'Ok' && status === 'OK') ||
+      (filtroStatus === 'Vencido' && status === 'VENCIDO');
+
+    const termo = busca.toLowerCase();
+    const cnj = p.processos?.numero?.toLowerCase() || '';
+    const reclamante = p.processos?.reclamante?.toLowerCase() || '';
+    const tit = p.titulo?.toLowerCase() || '';
+    const matchBusca = cnj.includes(termo) || reclamante.includes(termo) || tit.includes(termo);
+
+    return matchFiltro && matchBusca;
   });
 
-  const prazosFiltrados = prazosCompletos.filter((item) => {
-    const bateFiltroStatus = filtroStatus === 'Todos' || item.statusCalculado.toLowerCase() === filtroStatus.toLowerCase();
-    const buscaLower = busca.toLowerCase();
-    const bateBusca =
-      item.cnj.toLowerCase().includes(buscaLower) ||
-      item.reclamante.toLowerCase().includes(buscaLower) ||
-      item.titulo.toLowerCase().includes(buscaLower);
-
-    return bateFiltroStatus && bateBusca;
-  });
+  if (loadingAuth) return <div className="p-8 text-center text-slate-500">Carregando...</div>;
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 sm:p-8 font-sans text-slate-800">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <main className="min-h-screen bg-slate-50 p-6 md:p-10">
+      <div className="max-w-7xl mx-auto space-y-6">
         
         {/* CABEÇALHO */}
-        <header className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+        <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <div>
-            <Link href="/" className="text-xs font-bold text-slate-500 hover:text-slate-800 transition">
+            <Link href="/" className="text-xs text-blue-600 hover:underline font-semibold block mb-1">
               ← Voltar ao Painel Principal
             </Link>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Gestão Central de Prazos</h1>
+            <h1 className="text-2xl font-bold text-slate-800">Gestão Central de Prazos</h1>
           </div>
-        </header>
+        </div>
 
-        {/* FORMULÁRIO */}
-        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
-          <h2 className="text-xs font-extrabold text-slate-900 tracking-wider uppercase mb-4">
-            {editId ? '✏️ Editar Prazo' : '➕ Novo Prazo'}
-          </h2>
-          <form onSubmit={handleSalvarPrazo} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        {/* NOVO PRAZO */}
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">+ Novo Prazo</h2>
+          <form onSubmit={handleCriarPrazo} className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <select
+              className="p-2.5 border border-slate-300 rounded-lg text-sm bg-white"
               value={processoId}
               onChange={(e) => setProcessoId(e.target.value)}
               required
-              className="p-3 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
             >
               <option value="">-- Selecione o Processo --</option>
-              {processos.map((proc) => (
+              {processos.map(proc => (
                 <option key={proc.id} value={proc.id}>
-                  {proc.numero_cnj} ({proc.reclamante})
+                  {proc.numero ? `${proc.numero} - ${proc.reclamante || ''}` : proc.reclamante || 'Sem número'}
                 </option>
               ))}
             </select>
 
             <input
               type="text"
-              placeholder="Título do Prazo"
+              placeholder="Título do Prazo (ex: Manifestação)"
+              className="p-2.5 border border-slate-300 rounded-lg text-sm"
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
               required
-              className="p-3 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
             />
 
             <input
               type="date"
+              className="p-2.5 border border-slate-300 rounded-lg text-sm"
               value={vencimento}
               onChange={(e) => setVencimento(e.target.value)}
               required
-              className="p-3 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
             />
 
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-sm"
-              >
-                {editId ? 'Atualizar' : 'Lançar'}
-              </button>
-              {editId && (
-                <button
-                  type="button"
-                  onClick={limparFormulario}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-3 rounded-xl text-xs transition"
-                >
-                  X
-                </button>
-              )}
-            </div>
+            <button
+              type="submit"
+              disabled={salvando}
+              className="bg-slate-900 text-white font-medium py-2.5 px-4 rounded-lg hover:bg-slate-800 text-sm transition-colors"
+            >
+              {salvando ? 'Lançando...' : 'Lançar'}
+            </button>
           </form>
-        </section>
+        </div>
 
-        {/* CONTROLES E TABELA */}
-        <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            
-            {/* ABAS DE STATUS */}
-            <div className="flex flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl">
-              {['Todos', 'Crítico', 'Atenção', 'Ok', 'Vencido'].map((st) => (
+        {/* TABELA DE PRAZOS */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap gap-2">
+              {['Todos', 'Crítico', 'Atenção', 'Ok', 'Vencido', 'Concluídos'].map(tab => (
                 <button
-                  key={st}
-                  onClick={() => setFiltroStatus(st)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    filtroStatus === st
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
+                  key={tab}
+                  onClick={() => setFiltroStatus(tab)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                    filtroStatus === tab ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {st}
+                  {tab}
                 </button>
               ))}
             </div>
 
-            {/* CAMPO DE BUSCA */}
             <input
               type="text"
-              placeholder="🔍 Buscar por CNJ, Título..."
+              placeholder="Buscar por CNJ, Título..."
+              className="p-2 border border-slate-300 rounded-lg text-xs w-full md:w-64"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              className="w-full sm:w-64 p-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:outline-none"
             />
           </div>
 
-          {/* TABELA DE PRAZOS */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b text-[11px] uppercase tracking-wider text-slate-400 font-bold bg-slate-50/50">
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">CNJ / Reclamante</th>
-                  <th className="py-3 px-4">Título do Prazo</th>
-                  <th className="py-3 px-4">Vencimento</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-xs">
-                {carregando ? (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">Sincronizando prazos do Supabase...</td>
+          {loading ? (
+            <div className="p-8 text-center text-slate-500">Carregando prazos...</div>
+          ) : prazosFiltrados.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">Nenhum prazo encontrado.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-xs">
+                    <th className="p-4">Concluído</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">CNJ / Reclamante</th>
+                    <th className="p-4">Título do Prazo</th>
+                    <th className="p-4">Vencimento</th>
+                    <th className="p-4 text-right">Ações</th>
                   </tr>
-                ) : prazosFiltrados.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">Nenhum prazo encontrado para este filtro.</td>
-                  </tr>
-                ) : (
-                  prazosFiltrados.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase ${
-                            item.statusCalculado === 'Vencido' || item.statusCalculado === 'Crítico'
-                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                              : item.statusCalculado === 'Atenção'
-                              ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                              : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                          }`}
-                        >
-                          {item.statusCalculado}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <p className="font-mono font-bold text-slate-900">{item.cnj}</p>
-                        <p className="text-[11px] text-slate-500">{item.reclamante}</p>
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-800">{item.titulo}</td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-700">{item.data_vencimento}</td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button onClick={() => prepararEdicao(item)} className="text-slate-600 hover:text-slate-900 font-bold text-[11px]">Editar</button>
-                          <button onClick={() => excluirPrazo(item.id)} className="text-rose-600 hover:text-rose-800 font-bold text-[11px]">Excluir</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {prazosFiltrados.map(item => {
+                    const statusInfo = getStatusPrazo(item.vencimento, item.concluido);
+                    return (
+                      <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${item.concluido ? 'opacity-60 bg-slate-50/50' : ''}`}>
+                        <td className="p-4">
+                          <input
+                            type="checkbox"
+                            checked={!!item.concluido}
+                            onChange={() => handleToggleConcluido(item.id, !!item.concluido)}
+                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </td>
+                        <td className="p-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold border ${statusInfo.color}`}>
+                            {statusInfo.label}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <p className={`font-semibold text-slate-800 ${item.concluido ? 'line-through' : ''}`}>
+                            {item.processos?.numero || 'Sem CNJ'}
+                          </p>
+                          <p className="text-xs text-slate-500">{item.processos?.reclamante || '-'}</p>
+                        </td>
+                        <td className={`p-4 font-medium text-slate-700 ${item.concluido ? 'line-through' : ''}`}>
+                          {item.titulo}
+                        </td>
+                        <td className="p-4 font-semibold text-slate-800">
+                          {new Date(item.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="p-4 text-right space-x-2">
+                          <button
+                            onClick={() => handleExcluirPrazo(item.id)}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium"
+                          >
+                            Excluir
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
       </div>
     </main>
