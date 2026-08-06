@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function GestaoProcessos() {
@@ -9,6 +9,51 @@ export default function GestaoProcessos() {
   const [prazos, setPrazos] = useState<any[]>([]);
   const [andamentos, setAndamentos] = useState<any[]>([]);
   const [honorarios, setHonorarios] = useState<any[]>([]);
+  const [carregado, setCarregado] = useState(false);
+
+  // --- CARREGAR DADOS DO LOCALSTORAGE AO INICIAR ---
+  useEffect(() => {
+    try {
+      const procSalvos = localStorage.getItem('processos_data');
+      const prazosSalvos = localStorage.getItem('prazos_data');
+      const andamentosSalvos = localStorage.getItem('andamentos_data');
+      const honorariosSalvos = localStorage.getItem('honorarios_data');
+
+      if (procSalvos) setProcessos(JSON.parse(procSalvos));
+      if (prazosSalvos) setPrazos(JSON.parse(prazosSalvos));
+      if (andamentosSalvos) setAndamentos(JSON.parse(andamentosSalvos));
+      if (honorariosSalvos) setHonorarios(JSON.parse(honorariosSalvos));
+    } catch (e) {
+      console.error('Erro ao carregar do localStorage', e);
+    } finally {
+      setCarregado(true);
+    }
+  }, []);
+
+  // --- SALVAR NO LOCALSTORAGE SEMPRE QUE OS DADOS MUDAREM ---
+  useEffect(() => {
+    if (carregado) {
+      localStorage.setItem('processos_data', JSON.stringify(processos));
+    }
+  }, [processos, carregado]);
+
+  useEffect(() => {
+    if (carregado) {
+      localStorage.setItem('prazos_data', JSON.stringify(prazos));
+    }
+  }, [prazos, carregado]);
+
+  useEffect(() => {
+    if (carregado) {
+      localStorage.setItem('andamentos_data', JSON.stringify(andamentos));
+    }
+  }, [andamentos, carregado]);
+
+  useEffect(() => {
+    if (carregado) {
+      localStorage.setItem('honorarios_data', JSON.stringify(honorarios));
+    }
+  }, [honorarios, carregado]);
 
   // --- ESTADOS DE BUSCA E MODAIS ---
   const [busca, setBusca] = useState('');
