@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 interface Processo {
   id: string;
   numero: string;
   reclamante?: string;
-  reclamada?: string;
 }
 
 interface Prazo {
@@ -26,13 +26,25 @@ export default function PrazosPage() {
   const [prazos, setPrazos] = useState<Prazo[]>([]);
   const [processos, setProcessos] = useState<Processo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalAberto, setModalAberto] = useState(false);
 
-  // Formulário do novo prazo
+  // Modais
+  const [modalPrazoAberto, setModalPrazoAberto] = useState(false);
+  const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
+
+  // Edição
+  const [prazoEditando, setPrazoEditando] = useState<Prazo | null>(null);
+
+  // Formulário do Prazo
   const [processoId, setProcessoId] = useState('');
   const [descricao, setDescricao] = useState('');
   const [dataVencimento, setDataVencimento] = useState('');
   const [status, setStatus] = useState('Pendente');
+
+  // Formulário de Novo Usuário
+  const [userNome, setUserNome] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userSenha, setUserSenha] = useState('');
+  const [userLoading, setUserLoading] = useState(false);
 
   useEffect(() => {
     carregarDados();
@@ -41,18 +53,16 @@ export default function PrazosPage() {
   async function carregarDados() {
     setLoading(true);
 
-    // Busca os processos para preencher a lista/dropdown
     const { data: dadosProcessos } = await supabase
       .from('processos')
-      .select('id, numero, reclamante, reclamada')
+      .select('id, numero, reclamante')
       .order('numero', { ascending: true });
 
     if (dadosProcessos && dadosProcessos.length > 0) {
       setProcessos(dadosProcessos);
-      setProcessoId(dadosProcessos[0].id);
+      if (!processoId) setProcessoId(dadosProcessos[0].id);
     }
 
-    // Busca a lista de prazos com o relacionamento de processos
     const { data: dadosPrazos } = await supabase
       .from('prazos')
       .select('*, processos(numero, reclamante)')
@@ -65,6 +75,24 @@ export default function PrazosPage() {
     setLoading(false);
   }
 
+  function abrirModalNovoPrazo() {
+    setPrazoEditando(null);
+    setDescricao('');
+    setDataVencimento('');
+    setStatus('Pendente');
+    if (processos.length > 0) setProcessoId(processos[0].id);
+    setModalPrazoAberto(true);
+  }
+
+  function abrirModalEditarPrazo(prazo: Prazo) {
+    setPrazoEditando(prazo);
+    setProcessoId(prazo.processo_id);
+    setDescricao(prazo.descricao || '');
+    setDataVencimento(prazo.data_vencimento ? prazo.data_vencimento.substring(0, 10) : '');
+    setStatus(prazo.status || 'Pendente');
+    setModalPrazoAberto(true);
+  }
+
   async function handleSalvarPrazo(e: React.FormEvent) {
     e.preventDefault();
 
@@ -73,39 +101,146 @@ export default function PrazosPage() {
       return;
     }
 
-    const { error } = await supabase.from('prazos').insert([
-      {
-        processo_id: processoId,
-        descricao,
-        data_vencimento: dataVencimento,
-        status,
-      },
-    ]);
+    if (prazoEditando) {
+      const { error } = await supabase
+        .from('prazos')
+        .update({
+          processo_id: processoId,
+          descricao,
+          data_vencimento: dataVencimento,
+          status,
+        })
+        .eq('id', prazoEditando.id);
 
-    if (error) {
-      alert('Erro ao cadastrar prazo: ' + error.message);
+      if (error) alert('Erro ao atualizar: ' + error.message);
     } else {
-      setModalAberto(false);
-      setDescricao('');
-      setDataVencimento('');
+      const { error } = await supabase.from('prazos').insert([
+        {
+          processo_id: processoId,
+          descricao,
+          data_vencimento: dataVencimento,
+          status,
+        },
+      ]);
+
+      if (error) alert('Erro ao cadastrar: ' + error.message);
+    }
+
+    setModalPrazoAberto(false);
+    carregarDados();
+  }
+
+  async function handleExcluirPrazo(id: string) {
+    if (!confirm('Tem certeza que deseja excluir este prazo?')) return;
+
+    const { error } = await supabase.from('prazos').delete().eq('id', id);
+    if (error) {
+      alert('Erro ao excluir: ' + error.message);
+    } else {
       carregarDados();
     }
   }
 
+  async function handleCadastrarUsuario(e: React.FormEvent) {
+    e.preventDefault();
+    setUserLoading(true);
+
+    const { error } = await supabase.auth.signUp({
+      email: userEmail,
+      password: userSenha,
+      options: {
+        data: { nome: userNome },
+      },
+    });
+
+    if (error) {
+      alert('Erro ao cadastrar usuário: ' + error.message);
+    } else {
+      alert('Usuário cadastrado com sucesso!');
+      setUserNome('');
+      setUserEmail('');
+      setUserSenha('');
+      setModalUsuarioAberto(false);
+    }
+    setUserLoading(false);
+  }
+
+  function exportarCSV() {
+    if (prazos.length === 0) {
+      alert('Não há prazos para exportar.');
+      return;
+    }
+
+    const cabecalho = 'Processo,Reclamante,Descricao,Vencimento,Status\n';
+    const linhas = prazos
+      .map((p) => {
+        const num = p.processos?.numero || '';
+        const rec = p.processos?.reclamante || '';
+        const desc = p.descricao || '';
+        const venc = p.data_vencimento ? new Date(p.data_vencimento).toLocaleDateString('pt-BR') : '';
+        const st = p.status || '';
+        return `"${num}","${rec}","${desc}","${venc}","${st}"`;
+      })
+      .join('\n');
+
+    const blob = new Blob([cabecalho + linhas], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'prazos_gestao_trabalhista.csv';
+    a.click();
+  }
+
+  function formatarData(dataIso: string) {
+    if (!dataIso) return '-';
+    const partes = dataIso.substring(0, 10).split('-');
+    if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    return dataIso;
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-slate-800">Gestão de Prazos</h1>
-        <button
-          onClick={() => setModalAberto(true)}
-          className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow"
-        >
-          + Novo Prazo
-        </button>
+      {/* Topo com navegação e ações */}
+      <div className="bg-white p-4 rounded-xl shadow border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Gestão de Prazos</h1>
+          <p className="text-xs text-slate-500">Controle de datas e atos processuais</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/"
+            className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            ← Voltar ao Início
+          </Link>
+
+          <button
+            onClick={exportarCSV}
+            className="px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm font-medium rounded-lg hover:bg-emerald-100 transition-colors"
+          >
+            Exportar CSV
+          </button>
+
+          <button
+            onClick={() => setModalUsuarioAberto(true)}
+            className="px-4 py-2 bg-purple-50 text-purple-700 border border-purple-200 text-sm font-medium rounded-lg hover:bg-purple-100 transition-colors"
+          >
+            + Cadastrar Usuário
+          </button>
+
+          <button
+            onClick={abrirModalNovoPrazo}
+            className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg text-sm hover:bg-blue-700 transition-colors shadow"
+          >
+            + Novo Prazo
+          </button>
+        </div>
       </div>
 
+      {/* Tabela de Prazos */}
       {loading ? (
-        <p className="text-slate-500">Carregando...</p>
+        <p className="text-slate-500 text-center py-8">Carregando dados...</p>
       ) : (
         <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
           <table className="w-full text-left text-sm text-slate-600">
@@ -115,16 +250,18 @@ export default function PrazosPage() {
                 <th className="p-4">Descrição</th>
                 <th className="p-4">Vencimento</th>
                 <th className="p-4">Status</th>
+                <th className="p-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {prazos.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50">
                   <td className="p-4 font-medium text-slate-800">
-                    {p.processos?.numero} {p.processos?.reclamante ? `(${p.processos.reclamante})` : ''}
+                    {p.processos?.numero}{' '}
+                    {p.processos?.reclamante ? `(${p.processos.reclamante})` : ''}
                   </td>
-                  <td className="p-4">{p.descricao}</td>
-                  <td className="p-4">{new Date(p.data_vencimento).toLocaleDateString('pt-BR')}</td>
+                  <td className="p-4">{p.descricao || '-'}</td>
+                  <td className="p-4 font-semibold text-slate-700">{formatarData(p.data_vencimento)}</td>
                   <td className="p-4">
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -133,15 +270,29 @@ export default function PrazosPage() {
                           : 'bg-amber-100 text-amber-700'
                       }`}
                     >
-                      {p.status}
+                      {p.status || 'Pendente'}
                     </span>
+                  </td>
+                  <td className="p-4 text-right space-x-2">
+                    <button
+                      onClick={() => abrirModalEditarPrazo(p)}
+                      className="text-blue-600 hover:text-blue-800 font-medium text-xs"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleExcluirPrazo(p.id)}
+                      className="text-red-600 hover:text-red-800 font-medium text-xs"
+                    >
+                      Excluir
+                    </button>
                   </td>
                 </tr>
               ))}
               {prazos.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-slate-400">
-                    Nenhum prazo cadastrado.
+                  <td colSpan={5} className="p-8 text-center text-slate-400">
+                    Nenhum prazo cadastrado no momento.
                   </td>
                 </tr>
               )}
@@ -150,16 +301,18 @@ export default function PrazosPage() {
         </div>
       )}
 
-      {/* Modal de Novo Prazo */}
-      {modalAberto && (
+      {/* Modal de Novo/Editar Prazo */}
+      {modalPrazoAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-slate-200">
-            <h2 className="text-xl font-bold text-slate-800">Novo Prazo</h2>
+            <h2 className="text-xl font-bold text-slate-800">
+              {prazoEditando ? 'Editar Prazo' : 'Novo Prazo'}
+            </h2>
 
             <form onSubmit={handleSalvarPrazo} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Selecione o Processo Cadastrado *
+                  Selecione o Processo *
                 </label>
                 <select
                   required
@@ -167,15 +320,11 @@ export default function PrazosPage() {
                   onChange={(e) => setProcessoId(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
                 >
-                  {processos.length === 0 ? (
-                    <option value="">Nenhum processo cadastrado ainda</option>
-                  ) : (
-                    processos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.numero} {p.reclamante ? `- ${p.reclamante}` : ''}
-                      </option>
-                    ))
-                  )}
+                  {processos.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.numero} {p.reclamante ? `- ${p.reclamante}` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -186,7 +335,7 @@ export default function PrazosPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Apresentar Contestação"
+                  placeholder="Ex: Apresentar Manifestação"
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
@@ -222,7 +371,7 @@ export default function PrazosPage() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setModalAberto(false)}
+                  onClick={() => setModalPrazoAberto(false)}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
                 >
                   Cancelar
@@ -231,7 +380,75 @@ export default function PrazosPage() {
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow"
                 >
-                  Cadastrar Prazo
+                  {prazoEditando ? 'Salvar Alterações' : 'Cadastrar Prazo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cadastrar Usuário */}
+      {modalUsuarioAberto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-slate-200">
+            <h2 className="text-xl font-bold text-slate-800">Cadastrar Novo Usuário</h2>
+            <p className="text-xs text-slate-500">
+              Crie o acesso para outros usuários entrarem na plataforma.
+            </p>
+
+            <form onSubmit={handleCadastrarUsuario} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Nome Completo</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: João da Silva"
+                  value={userNome}
+                  onChange={(e) => setUserNome(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail de Acesso</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="usuario@email.com"
+                  value={userEmail}
+                  onChange={(e) => setUserEmail(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Senha Inicial</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="Mínimo 6 caracteres"
+                  value={userSenha}
+                  onChange={(e) => setUserSenha(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalUsuarioAberto(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={userLoading}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 shadow disabled:opacity-50"
+                >
+                  {userLoading ? 'Criando...' : 'Cadastrar Usuário'}
                 </button>
               </div>
             </form>
