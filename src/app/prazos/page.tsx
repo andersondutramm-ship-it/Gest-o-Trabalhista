@@ -198,6 +198,48 @@ export default function PrazosPage() {
     return dataIso;
   }
 
+  // Função para calcular alerta e urgência da data
+  function obterAlertaData(dataIso: string, statusPrazo: string) {
+    if (!dataIso || statusPrazo === 'Concluído') return null;
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const partes = dataIso.substring(0, 10).split('-');
+    const dataVencimento = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+    dataVencimento.setHours(0, 0, 0, 0);
+
+    const diferencaDias = Math.ceil((dataVencimento.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
+
+    if (diferencaDias < 0) {
+      return (
+        <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+          VENCIDO ({Math.abs(diferencaDias)}d)
+        </span>
+      );
+    } else if (diferencaDias === 0) {
+      return (
+        <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white animate-pulse">
+          VENCE HOJE
+        </span>
+      );
+    } else if (diferencaDias <= 3) {
+      return (
+        <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+          URGENTE ({diferencaDias}d)
+        </span>
+      );
+    } else if (diferencaDias <= 7) {
+      return (
+        <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
+          PRÓXIMO ({diferencaDias}d)
+        </span>
+      );
+    }
+
+    return null;
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Topo com navegação e ações */}
@@ -261,7 +303,12 @@ export default function PrazosPage() {
                     {p.processos?.reclamante ? `(${p.processos.reclamante})` : ''}
                   </td>
                   <td className="p-4">{p.descricao || '-'}</td>
-                  <td className="p-4 font-semibold text-slate-700">{formatarData(p.data_vencimento)}</td>
+                  <td className="p-4 font-semibold text-slate-700">
+                    <div className="flex items-center">
+                      <span>{formatarData(p.data_vencimento)}</span>
+                      {obterAlertaData(p.data_vencimento, p.status)}
+                    </div>
+                  </td>
                   <td className="p-4">
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
