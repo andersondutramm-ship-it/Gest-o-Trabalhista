@@ -27,9 +27,8 @@ export default function PrazosPage() {
   const [processos, setProcessos] = useState<Processo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modais
+  // Modal de Prazo
   const [modalPrazoAberto, setModalPrazoAberto] = useState(false);
-  const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
 
   // Edição
   const [prazoEditando, setPrazoEditando] = useState<Prazo | null>(null);
@@ -39,12 +38,6 @@ export default function PrazosPage() {
   const [descricao, setDescricao] = useState('');
   const [dataVencimento, setDataVencimento] = useState('');
   const [status, setStatus] = useState('Pendente');
-
-  // Formulário de Novo Usuário
-  const [userNome, setUserNome] = useState('');
-  const [userEmail, setUserEmail] = useState('');
-  const [userSenha, setUserSenha] = useState('');
-  const [userLoading, setUserLoading] = useState(false);
 
   useEffect(() => {
     carregarDados();
@@ -141,30 +134,6 @@ export default function PrazosPage() {
     }
   }
 
-  async function handleCadastrarUsuario(e: React.FormEvent) {
-    e.preventDefault();
-    setUserLoading(true);
-
-    const { error } = await supabase.auth.signUp({
-      email: userEmail,
-      password: userSenha,
-      options: {
-        data: { nome: userNome },
-      },
-    });
-
-    if (error) {
-      alert('Erro ao cadastrar usuário: ' + error.message);
-    } else {
-      alert('Usuário cadastrado com sucesso!');
-      setUserNome('');
-      setUserEmail('');
-      setUserSenha('');
-      setModalUsuarioAberto(false);
-    }
-    setUserLoading(false);
-  }
-
   function exportarCSV() {
     if (prazos.length === 0) {
       alert('Não há prazos para exportar.');
@@ -198,7 +167,6 @@ export default function PrazosPage() {
     return dataIso;
   }
 
-  // Função para calcular alerta e urgência da data
   function obterAlertaData(dataIso: string, statusPrazo: string) {
     if (!dataIso || statusPrazo === 'Concluído') return null;
 
@@ -264,12 +232,12 @@ export default function PrazosPage() {
             Exportar CSV
           </button>
 
-          <button
-            onClick={() => setModalUsuarioAberto(true)}
+          <Link
+            href="/admin/usuarios"
             className="px-4 py-2 bg-purple-50 text-purple-700 border border-purple-200 text-sm font-medium rounded-lg hover:bg-purple-100 transition-colors"
           >
-            + Cadastrar Usuário
-          </button>
+            Gerenciar Usuários
+          </Link>
 
           <button
             onClick={abrirModalNovoPrazo}
@@ -428,74 +396,6 @@ export default function PrazosPage() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow"
                 >
                   {prazoEditando ? 'Salvar Alterações' : 'Cadastrar Prazo'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Cadastrar Usuário */}
-      {modalUsuarioAberto && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-slate-200">
-            <h2 className="text-xl font-bold text-slate-800">Cadastrar Novo Usuário</h2>
-            <p className="text-xs text-slate-500">
-              Crie o acesso para outros usuários entrarem na plataforma.
-            </p>
-
-            <form onSubmit={handleCadastrarUsuario} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Nome Completo</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: João da Silva"
-                  value={userNome}
-                  onChange={(e) => setUserNome(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail de Acesso</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="usuario@email.com"
-                  value={userEmail}
-                  onChange={(e) => setUserEmail(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Senha Inicial</label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="Mínimo 6 caracteres"
-                  value={userSenha}
-                  onChange={(e) => setUserSenha(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setModalUsuarioAberto(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={userLoading}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 shadow disabled:opacity-50"
-                >
-                  {userLoading ? 'Criando...' : 'Cadastrar Usuário'}
                 </button>
               </div>
             </form>
