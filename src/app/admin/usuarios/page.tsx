@@ -1,112 +1,82 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function GestaoUsuarios() {
-  const [novoEmail, setNovoEmail] = useState('');
-  const [novaSenha, setNovaSenha] = useState('');
-  const [role, setRole] = useState('operador');
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [usuarios, setUsuarios] = useState<any[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+  const router = useRouter();
 
-  useEffect(() => {
-    carregarUsuarios();
-  }, []);
-
-  async function carregarUsuarios() {
-    const { data } = await supabase.from('profiles').select('*');
-    setUsuarios(data || []);
-  }
-
-  async function handleCadastrarUsuario(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setErro(null);
 
-    // Criação do usuário no Supabase Auth via Admin / Client API
-    const { data, error } = await supabase.auth.signUp({
-      email: novoEmail,
-      password: novaSenha,
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
 
     if (error) {
-      alert('Erro ao cadastrar usuário: ' + error.message);
-    } else if (data.user) {
-      await supabase.from('profiles').insert([{
-        id: data.user.id,
-        email: novoEmail,
-        role: role
-      }]);
-      alert('Usuário cadastrado com sucesso!');
-      setNovoEmail('');
-      setNovaSenha('');
-      carregarUsuarios();
+      setErro('E-mail ou senha incorretos.');
+      setLoading(false);
+    } else if (data.session) {
+      router.push('/');
+      router.refresh();
     }
-    setLoading(false);
   }
 
   return (
-    <main className="max-w-4xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800">Controle de Usuários</h1>
-
-      {/* Formulário de Cadastro de Usuário */}
-      <form onSubmit={handleCadastrarUsuario} className="bg-white p-6 rounded-xl shadow-sm border space-y-4">
-        <h2 className="font-semibold text-slate-700">Cadastrar Novo Usuário</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <input
-            type="email"
-            placeholder="E-mail"
-            required
-            className="p-2 border rounded-lg text-sm"
-            value={novoEmail}
-            onChange={(e) => setNovoEmail(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Senha"
-            required
-            className="p-2 border rounded-lg text-sm"
-            value={novaSenha}
-            onChange={(e) => setNovaSenha(e.target.value)}
-          />
-          <select
-            className="p-2 border rounded-lg text-sm bg-white"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="operador">Operador</option>
-            <option value="admin">Administrador</option>
-          </select>
+    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200 space-y-6">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold text-slate-800">Acesso Restrito</h1>
+          <p className="text-sm text-slate-500">Entre com suas credenciais para acessar o sistema</p>
         </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg text-sm hover:bg-blue-700"
-        >
-          {loading ? 'Salvando...' : 'Cadastrar Usuário'}
-        </button>
-      </form>
 
-      {/* Tabela de Usuários */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="p-4">E-mail</th>
-              <th className="p-4">Nível de Acesso</th>
-              <th className="p-4">Data de Cadastro</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {usuarios.map((u) => (
-              <tr key={u.id}>
-                <td className="p-4">{u.email}</td>
-                <td className="p-4 capitalize">{u.role}</td>
-                <td className="p-4">{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {erro && (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg text-center">
+            {erro}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail</label>
+            <input
+              type="email"
+              required
+              placeholder="seu@email.com"
+              className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Senha</label>
+            <input
+              type="password"
+              required
+              placeholder="••••••••"
+              className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 bg-blue-600 text-white font-medium rounded-lg text-sm hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
+          >
+            {loading ? 'Entrando...' : 'Entrar no Sistema'}
+          </button>
+        </form>
       </div>
     </main>
   );
