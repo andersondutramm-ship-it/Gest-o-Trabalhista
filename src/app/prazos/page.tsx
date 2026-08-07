@@ -8,21 +8,26 @@ export default function GestaoPrazos() {
   const [session, setSession] = useState<any>(null);
   const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
 
+  // Estados dos Prazos
   const [prazos, setPrazos] = useState<any[]>([]);
-  const [processos, setProcessos] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [filtroStatus, setFiltroStatus] = useState<string>('Todos');
-  const [busca, setBusca] = useState<string>('');
+  const [erro, setErro] = useState<string | null>(null);
 
-  // Formulário de Novo Prazo
-  const [processoId, setProcessoId] = useState<string>('');
-  const [titulo, setTitulo] = useState<string>('');
-  const [vencimento, setVencimento] = useState<string>('');
-  const [salvando, setSalvando] = useState<boolean>(false);
+  // Modal de Novo Prazo
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [novoPrazo, setNovoPrazo] = useState({
+    numero_processo: '',
+    descricao: '',
+    data_vencimento: '',
+    status: 'Pendente',
+    usuario_responsavel: ''
+  });
 
   // Estado para Edição de Prazo
   const [prazoEditando, setPrazoEditando] = useState<any | null>(null);
 
+  // VERIFICAR SESSÃO DO USUÁRIO
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -36,22 +41,22 @@ export default function GestaoPrazos() {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function carregarDados() {
+  // CARREGAR PRAZOS DO SUPABASE
+  async function carregarPrazos() {
     try {
       setLoading(true);
+      setErro(null);
 
-      const { data: procData } = await supabase.from('processos').select('id, numero, reclamante');
-      setProcessos(procData || []);
-
-      const { data: prazosData, error } = await supabase
+      const { data, error } = await supabase
         .from('prazos')
-        .select('*, processos(numero, reclamante)')
-        .order('vencimento', { ascending: true });
+        .select('*')
+        .order('data_vencimento', { ascending: true });
 
       if (error) throw error;
-      setPrazos(prazosData || []);
+      setPrazos(data || []);
     } catch (err: any) {
       console.error('Erro ao carregar prazos:', err.message);
+      setErro('Não foi possível carregar a lista de prazos.');
     } finally {
       setLoading(false);
     }
@@ -59,274 +64,273 @@ export default function GestaoPrazos() {
 
   useEffect(() => {
     if (session) {
-      carregarDados();
+      carregarPrazos();
     }
   }, [session]);
 
-  // MARCAR / DESMARCAR COMO CONCLUÍDO
-  async function handleToggleConcluido(id: string, concluidoAtual: boolean) {
-    try {
-      const { error } = await supabase
-        .from('prazos')
-        .update({ concluido: !concluidoAtual })
-        .eq('id', id);
-
-      if (error) throw error;
-      carregarDados();
-    } catch (err: any) {
-      alert('Erro ao atualizar o prazo: ' + err.message);
-    }
-  }
-
-  // CRIAR PRAZO
-  async function handleCriarPrazo(e: React.FormEvent) {
+  // ADICIONAR NOVO PRAZO
+  async function handleSalvarPrazo(e: React.FormEvent) {
     e.preventDefault();
-    if (!processoId || !titulo || !vencimento) {
-      alert('Preencha todos os campos.');
+    if (!novoPrazo.descricao || !novoPrazo.data_vencimento) {
+      alert('Descrição e Data de Vencimento são obrigatórios.');
       return;
     }
 
     try {
-      setSalvando(true);
-      const { error } = await supabase.from('prazos').insert([{
-        processo_id: processoId,
-        titulo,
-        vencimento,
-        concluido: false
-      }]);
+      setSaving(true);
+      const { error } = await supabase
+        .from('prazos')
+        .insert([{
+          ...novoPrazo,
+          created_at: new Date().toISOString()
+        }]);
 
       if (error) throw error;
 
-      setTitulo('');
-      setVencimento('');
-      setProcessoId('');
-      carregarDados();
+      setNovoPrazo({
+        numero_processo: '',
+        descricao: '',
+        data_vencimento: '',
+        status: 'Pendente',
+        usuario_responsavel: ''
+      });
+      setShowModal(false);
+      carregarPrazos();
     } catch (err: any) {
-      alert('Erro ao lançar prazo: ' + err.message);
+      alert('Erro ao salvar prazo: ' + err.message);
     } finally {
-      setSalvando(false);
+      setSaving(false);
     }
   }
 
-  // ATUALIZAR PRAZO EXISTENTE
+  // EDITAR PRAZO EXISTENTE
   async function handleSalvarEdicao(e: React.FormEvent) {
     e.preventDefault();
     if (!prazoEditando) return;
 
     try {
-      setSalvando(true);
+      setSaving(true);
       const { error } = await supabase
         .from('prazos')
         .update({
-          titulo: prazoEditando.titulo,
-          vencimento: prazoEditando.vencimento,
-          processo_id: prazoEditando.processo_id
+          numero_processo: prazoEditando.numero_processo,
+          descricao: prazoEditando.descricao,
+          data_vencimento: prazoEditando.data_vencimento,
+          status: prazoEditando.status,
+          usuario_responsavel: prazoEditando.usuario_responsavel
         })
         .eq('id', prazoEditando.id);
 
       if (error) throw error;
 
       setPrazoEditando(null);
-      carregarDados();
+      carregarPrazos();
     } catch (err: any) {
       alert('Erro ao atualizar prazo: ' + err.message);
     } finally {
-      setSalvando(false);
+      setSaving(false);
     }
   }
 
   // EXCLUIR PRAZO
-  async function handleExcluirPrazo(id: string) {
-    if (!confirm('Deseja excluir este prazo?')) return;
+  async function handleExcluir(id: string) {
+    if (!confirm('Deseja realmente excluir este prazo?')) return;
+
     try {
-      const { error } = await supabase.from('prazos').delete().eq('id', id);
+      const { error } = await supabase
+        .from('prazos')
+        .delete()
+        .eq('id', id);
+
       if (error) throw error;
-      carregarDados();
+      carregarPrazos();
     } catch (err: any) {
       alert('Erro ao excluir prazo: ' + err.message);
     }
   }
 
-  // CÁLCULO DE STATUS DO PRAZO
-  function getStatusPrazo(vencimentoStr: string, concluido: boolean) {
-    if (concluido) return { label: 'CONCLUÍDO', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+  // EXPORTAÇÃO EXCLUSIVA DE PRAZOS EM CSV
+  function handleExportarPrazosCSV() {
+    if (prazos.length === 0) {
+      alert('Não há prazos para exportar.');
+      return;
+    }
+
+    const headers = ['Processo', 'Descricao do Prazo', 'Data Vencimento', 'Status', 'Atribuido a'];
+    const rows = prazos.map(p => [
+      `"${p.numero_processo || ''}"`,
+      `"${p.descricao || ''}"`,
+      `"${p.data_vencimento ? new Date(p.data_vencimento).toLocaleDateString('pt-BR') : ''}"`,
+      `"${p.status || ''}"`,
+      `"${p.usuario_responsavel || ''}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_prazos_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // CÁLCULO DE STATUS DO PRAZO (Hoje / Vencido / No Prazo)
+  function getPrazoStatusAlert(dataIso: string, status: string) {
+    if (status === 'Concluído') {
+      return { label: 'Concluído', style: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    }
+
+    if (!dataIso) return { label: 'Sem data', style: 'bg-slate-100 text-slate-600' };
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    const dataVenc = new Date(vencimentoStr + 'T00:00:00');
 
-    const diffDias = Math.ceil((dataVenc.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
+    const dataVenc = new Date(dataIso);
+    dataVenc.setHours(0, 0, 0, 0);
 
-    if (diffDias < 0) return { label: 'VENCIDO', color: 'bg-red-100 text-red-800 border-red-200' };
-    if (diffDias <= 2) return { label: 'CRÍTICO', color: 'bg-red-50 text-red-600 border-red-200' };
-    if (diffDias <= 5) return { label: 'ATENÇÃO', color: 'bg-amber-100 text-amber-800 border-amber-200' };
-    return { label: 'OK', color: 'bg-blue-50 text-blue-700 border-blue-200' };
+    const diffTempo = dataVenc.getTime() - hoje.getTime();
+    const diffDias = Math.ceil(diffTempo / (1000 * 60 * 60 * 24));
+
+    if (diffDias < 0) {
+      return { label: `Vencido há ${Math.abs(diffDias)} dia(s)`, style: 'bg-red-100 text-red-800 border-red-200' };
+    } else if (diffDias === 0) {
+      return { label: 'Vence HOJE!', style: 'bg-amber-100 text-amber-800 border-amber-200 font-bold' };
+    } else if (diffDias <= 3) {
+      return { label: `Vence em ${diffDias} dia(s)`, style: 'bg-amber-50 text-amber-700 border-amber-200' };
+    } else {
+      return { label: `No prazo (${diffDias} dias)`, style: 'bg-blue-50 text-blue-700 border-blue-200' };
+    }
   }
 
-  // FILTRAGEM
-  const prazosFiltrados = prazos.filter(p => {
-    const status = getStatusPrazo(p.vencimento, p.concluido).label;
-    const matchFiltro = 
-      filtroStatus === 'Todos' ||
-      (filtroStatus === 'Concluídos' && p.concluido) ||
-      (filtroStatus === 'Crítico' && status === 'CRÍTICO') ||
-      (filtroStatus === 'Atenção' && status === 'ATENÇÃO') ||
-      (filtroStatus === 'Ok' && status === 'OK') ||
-      (filtroStatus === 'Vencido' && status === 'VENCIDO');
+  if (loadingAuth) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando...</div>;
+  }
 
-    const termo = busca.toLowerCase();
-    const cnj = p.processos?.numero?.toLowerCase() || '';
-    const reclamante = p.processos?.reclamante?.toLowerCase() || '';
-    const tit = p.titulo?.toLowerCase() || '';
-    const matchBusca = cnj.includes(termo) || reclamante.includes(termo) || tit.includes(termo);
-
-    return matchFiltro && matchBusca;
+  const prazosPendentes = prazos.filter(p => p.status !== 'Concluído');
+  const prazosUrgentes = prazosPendentes.filter(p => {
+    if (!p.data_vencimento) return false;
+    const diff = new Date(p.data_vencimento).getTime() - new Date().setHours(0,0,0,0);
+    return Math.ceil(diff / (1000 * 60 * 60 * 24)) <= 3;
   });
-
-  if (loadingAuth) return <div className="p-8 text-center text-slate-500">Carregando...</div>;
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* CABEÇALHO */}
-        <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div>
-            <Link href="/" className="text-xs text-blue-600 hover:underline font-semibold block mb-1">
-              ← Voltar ao Painel Principal
+            <h1 className="text-2xl font-bold text-slate-800">Controle de Prazos Processuais</h1>
+            <p className="text-slate-500 text-sm">Acompanhamento e alertas de vencimentos</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/"
+              className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors text-sm"
+            >
+              ← Voltar para Processos
             </Link>
-            <h1 className="text-2xl font-bold text-slate-800">Gestão Central de Prazos</h1>
+            <button
+              onClick={handleExportarPrazosCSV}
+              className="px-4 py-2 bg-emerald-50 text-emerald-700 font-medium rounded-lg hover:bg-emerald-100 transition-colors text-sm border border-emerald-200"
+            >
+              Exportar Prazos (CSV)
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-sm"
+            >
+              + Novo Prazo
+            </button>
           </div>
         </div>
 
-        {/* NOVO PRAZO */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">+ Novo Prazo</h2>
-          <form onSubmit={handleCriarPrazo} className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <select
-              className="p-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-              value={processoId}
-              onChange={(e) => setProcessoId(e.target.value)}
-              required
-            >
-              <option value="">-- Selecione o Processo --</option>
-              {processos.map(proc => (
-                <option key={proc.id} value={proc.id}>
-                  {proc.numero ? `${proc.numero} - ${proc.reclamante || ''}` : proc.reclamante || 'Sem número'}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="text"
-              placeholder="Título do Prazo (ex: Manifestação)"
-              className="p-2.5 border border-slate-300 rounded-lg text-sm"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              required
-            />
-
-            <input
-              type="date"
-              className="p-2.5 border border-slate-300 rounded-lg text-sm"
-              value={vencimento}
-              onChange={(e) => setVencimento(e.target.value)}
-              required
-            />
-
-            <button
-              type="submit"
-              disabled={salvando}
-              className="bg-slate-900 text-white font-medium py-2.5 px-4 rounded-lg hover:bg-slate-800 text-sm transition-colors"
-            >
-              {salvando ? 'Lançando...' : 'Lançar'}
-            </button>
-          </form>
+        {/* CARDS DE RESUMO */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Prazos</span>
+            <p className="text-2xl font-bold text-slate-800 mt-1">{prazos.length}</p>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Prazos Pendentes</span>
+            <p className="text-2xl font-bold text-blue-600 mt-1">{prazosPendentes.length}</p>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Urgentes / Vencidos</span>
+            <p className={`text-2xl font-bold mt-1 ${prazosUrgentes.length > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+              {prazosUrgentes.length}
+            </p>
+          </div>
         </div>
 
-        {/* TABELA DE PRAZOS */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              {['Todos', 'Crítico', 'Atenção', 'Ok', 'Vencido', 'Concluídos'].map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setFiltroStatus(tab)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                    filtroStatus === tab ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+        {/* ALERTA DE ERRO */}
+        {erro && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {erro}
+          </div>
+        )}
 
-            <input
-              type="text"
-              placeholder="Buscar por CNJ, Título..."
-              className="p-2 border border-slate-300 rounded-lg text-xs w-full md:w-64"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-            />
+        {/* TABELA DE PRAZOS */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-slate-800">Cronograma de Prazos</h2>
           </div>
 
           {loading ? (
             <div className="p-8 text-center text-slate-500">Carregando prazos...</div>
-          ) : prazosFiltrados.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-sm">Nenhum prazo encontrado.</div>
+          ) : prazos.length === 0 ? (
+            <div className="p-12 text-center space-y-3">
+              <p className="text-slate-500 text-base">Nenhum prazo cadastrado até o momento.</p>
+              <button
+                onClick={() => setShowModal(true)}
+                className="px-4 py-2 bg-blue-50 text-blue-600 font-medium rounded-lg hover:bg-blue-100 text-sm"
+              >
+                Cadastrar o primeiro prazo
+              </button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="w-full text-left text-sm border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-xs">
-                    <th className="p-4">Concluído</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4">CNJ / Reclamante</th>
-                    <th className="p-4">Título do Prazo</th>
-                    <th className="p-4">Vencimento</th>
-                    <th className="p-4 text-right">Ações</th>
+                  <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                    <th className="p-4 font-semibold">Processo</th>
+                    <th className="p-4 font-semibold">Descrição</th>
+                    <th className="p-4 font-semibold">Vencimento</th>
+                    <th className="p-4 font-semibold">Responsável</th>
+                    <th className="p-4 font-semibold">Status / Alerta</th>
+                    <th className="p-4 font-semibold text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {prazosFiltrados.map(item => {
-                    const statusInfo = getStatusPrazo(item.vencimento, item.concluido);
+                  {prazos.map((item) => {
+                    const alerta = getPrazoStatusAlert(item.data_vencimento, item.status);
+
                     return (
-                      <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${item.concluido ? 'opacity-60 bg-slate-50/50' : ''}`}>
-                        <td className="p-4">
-                          <input
-                            type="checkbox"
-                            checked={!!item.concluido}
-                            onChange={() => handleToggleConcluido(item.id, !!item.concluido)}
-                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                          />
+                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 font-medium text-slate-800">{item.numero_processo || 'Geral / Não informado'}</td>
+                        <td className="p-4 text-slate-700">{item.descricao}</td>
+                        <td className="p-4 text-slate-600">
+                          {item.data_vencimento ? new Date(item.data_vencimento).toLocaleDateString('pt-BR') : '-'}
                         </td>
+                        <td className="p-4 text-slate-600">{item.usuario_responsavel || '-'}</td>
                         <td className="p-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold border ${statusInfo.color}`}>
-                            {statusInfo.label}
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${alerta.style}`}>
+                            {alerta.label}
                           </span>
                         </td>
-                        <td className="p-4">
-                          <p className={`font-semibold text-slate-800 ${item.concluido ? 'line-through' : ''}`}>
-                            {item.processos?.numero || 'Sem CNJ'}
-                          </p>
-                          <p className="text-xs text-slate-500">{item.processos?.reclamante || '-'}</p>
-                        </td>
-                        <td className={`p-4 font-medium text-slate-700 ${item.concluido ? 'line-through' : ''}`}>
-                          {item.titulo}
-                        </td>
-                        <td className="p-4 font-semibold text-slate-800">
-                          {new Date(item.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="p-4 text-right space-x-3">
+                        <td className="p-4 text-right space-x-2">
                           <button
                             onClick={() => setPrazoEditando(item)}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                            className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50"
                           >
                             Editar
                           </button>
                           <button
-                            onClick={() => handleExcluirPrazo(item.id)}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium"
+                            onClick={() => handleExcluir(item.id)}
+                            className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50"
                           >
                             Excluir
                           </button>
@@ -342,6 +346,93 @@ export default function GestaoPrazos() {
 
       </div>
 
+      {/* MODAL DE NOVO PRAZO */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Cadastrar Novo Prazo</h3>
+
+            <form onSubmit={handleSalvarPrazo} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Número do Processo</label>
+                <input
+                  type="text"
+                  placeholder="0000000-00.2026.5.02.0000"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={novoPrazo.numero_processo}
+                  onChange={(e) => setNovoPrazo({ ...novoPrazo, numero_processo: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Descrição do Prazo *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Apresentar Réplica / Perícia"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={novoPrazo.descricao}
+                  onChange={(e) => setNovoPrazo({ ...novoPrazo, descricao: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Data de Vencimento *</label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={novoPrazo.data_vencimento}
+                    onChange={(e) => setNovoPrazo({ ...novoPrazo, data_vencimento: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                  <select
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={novoPrazo.status}
+                    onChange={(e) => setNovoPrazo({ ...novoPrazo, status: e.target.value })}
+                  >
+                    <option value="Pendente">Pendente</option>
+                    <option value="Em Andamento">Em Andamento</option>
+                    <option value="Concluído">Concluído</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Responsável</label>
+                <input
+                  type="text"
+                  placeholder="Nome do advogado ou perito"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={novoPrazo.usuario_responsavel}
+                  onChange={(e) => setNovoPrazo({ ...novoPrazo, usuario_responsavel: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? 'Salvando...' : 'Salvar Prazo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE EDIÇÃO DE PRAZO */}
       {prazoEditando && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -350,41 +441,58 @@ export default function GestaoPrazos() {
 
             <form onSubmit={handleSalvarEdicao} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Processo</label>
-                <select
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-                  value={prazoEditando.processo_id}
-                  onChange={(e) => setPrazoEditando({ ...prazoEditando, processo_id: e.target.value })}
-                  required
-                >
-                  <option value="">-- Selecione o Processo --</option>
-                  {processos.map(proc => (
-                    <option key={proc.id} value={proc.id}>
-                      {proc.numero ? `${proc.numero} - ${proc.reclamante || ''}` : proc.reclamante || 'Sem número'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Título do Prazo</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Número do Processo</label>
                 <input
                   type="text"
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm"
-                  value={prazoEditando.titulo}
-                  onChange={(e) => setPrazoEditando({ ...prazoEditando, titulo: e.target.value })}
-                  required
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={prazoEditando.numero_processo || ''}
+                  onChange={(e) => setPrazoEditando({ ...prazoEditando, numero_processo: e.target.value })}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Vencimento</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Descrição do Prazo *</label>
                 <input
-                  type="date"
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm"
-                  value={prazoEditando.vencimento}
-                  onChange={(e) => setPrazoEditando({ ...prazoEditando, vencimento: e.target.value })}
+                  type="text"
                   required
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={prazoEditando.descricao || ''}
+                  onChange={(e) => setPrazoEditando({ ...prazoEditando, descricao: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Data de Vencimento *</label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={prazoEditando.data_vencimento || ''}
+                    onChange={(e) => setPrazoEditando({ ...prazoEditando, data_vencimento: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                  <select
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={prazoEditando.status || 'Pendente'}
+                    onChange={(e) => setPrazoEditando({ ...prazoEditando, status: e.target.value })}
+                  >
+                    <option value="Pendente">Pendente</option>
+                    <option value="Em Andamento">Em Andamento</option>
+                    <option value="Concluído">Concluído</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Responsável</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={prazoEditando.usuario_responsavel || ''}
+                  onChange={(e) => setPrazoEditando({ ...prazoEditando, usuario_responsavel: e.target.value })}
                 />
               </div>
 
@@ -398,10 +506,10 @@ export default function GestaoPrazos() {
                 </button>
                 <button
                   type="submit"
-                  disabled={salvando}
+                  disabled={saving}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {salvando ? 'Salvando...' : 'Salvar'}
+                  {saving ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
               </div>
             </form>
