@@ -19,7 +19,7 @@ export default function GestaoProcessos() {
   const [loading, setLoading] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
   
-  // Modal de cadastro
+  // Modal de Novo Cadastro
   const [showModal, setShowModal] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [novoProcesso, setNovoProcesso] = useState({
@@ -30,6 +30,9 @@ export default function GestaoProcessos() {
     honorarios: '',
     status: 'Em andamento'
   });
+
+  // Estado para Edição de Processo
+  const [processoEditando, setProcessoEditando] = useState<any | null>(null);
 
   // VERIFICAR SESSÃO DO USUÁRIO
   useEffect(() => {
@@ -107,8 +110,8 @@ export default function GestaoProcessos() {
         .from('processos')
         .insert([{
           ...novoProcesso,
-          valor_causa: novoProcesso.valor_causa ? parseFloat(novoProcesso.valor_causa) : 0,
-          honorarios: novoProcesso.honorarios ? parseFloat(novoProcesso.honorarios) : 0
+          valor_causa: novoProcesso.valor_causa ? parseFloat(String(novoProcesso.valor_causa).replace(',', '.')) : 0,
+          honorarios: novoProcesso.honorarios ? parseFloat(String(novoProcesso.honorarios).replace(',', '.')) : 0
         }]);
 
       if (error) throw error;
@@ -118,6 +121,36 @@ export default function GestaoProcessos() {
       carregarProcessos();
     } catch (err: any) {
       alert('Erro ao salvar processo: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ATUALIZAR PROCESSO EXISTENTE
+  async function handleSalvarEdicao(e: React.FormEvent) {
+    e.preventDefault();
+    if (!processoEditando) return;
+
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('processos')
+        .update({
+          numero: processoEditando.numero,
+          reclamante: processoEditando.reclamante,
+          reclamada: processoEditando.reclamada,
+          valor_causa: processoEditando.valor_causa ? parseFloat(String(processoEditando.valor_causa).replace(',', '.')) : 0,
+          honorarios: processoEditando.honorarios ? parseFloat(String(processoEditando.honorarios).replace(',', '.')) : 0,
+          status: processoEditando.status
+        })
+        .eq('id', processoEditando.id);
+
+      if (error) throw error;
+
+      setProcessoEditando(null);
+      carregarProcessos();
+    } catch (err: any) {
+      alert('Erro ao atualizar processo: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -239,7 +272,13 @@ export default function GestaoProcessos() {
     );
   }
 
-  // TELA PRINCIPAL
+  // CÁLCULO DE PROCESSOS PARADOS (+60 dias)
+  const processosParados = processos.filter(p => {
+    if (!p.created_at || p.status === 'Encerrado') return false;
+    const dias = Math.floor((new Date().getTime() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24));
+    return dias > 60;
+  });
+
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -279,7 +318,7 @@ export default function GestaoProcessos() {
         </div>
 
         {/* CARDS DE RESUMO */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Processos</span>
             <p className="text-2xl font-bold text-slate-800 mt-1">{processos.length}</p>
@@ -291,14 +330,20 @@ export default function GestaoProcessos() {
             </p>
           </div>
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Parados (+60 dias)</span>
+            <p className={`text-2xl font-bold mt-1 ${processosParados.length > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
+              {processosParados.length}
+            </p>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Valor da Causa</span>
-            <p className="text-xl font-bold text-slate-800 mt-1">
+            <p className="text-lg font-bold text-slate-800 mt-1">
               R$ {processos.reduce((acc, p) => acc + (Number(p.valor_causa) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           </div>
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Honorários</span>
-            <p className="text-xl font-bold text-emerald-600 mt-1">
+            <p className="text-lg font-bold text-emerald-600 mt-1">
               R$ {processos.reduce((acc, p) => acc + (Number(p.honorarios) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           </div>
@@ -339,41 +384,61 @@ export default function GestaoProcessos() {
                     <th className="p-4 font-semibold">Reclamada</th>
                     <th className="p-4 font-semibold">Valor da Causa</th>
                     <th className="p-4 font-semibold">Honorários</th>
-                    <th className="p-4 font-semibold">Status</th>
+                    <th className="p-4 font-semibold">Status / Alerta</th>
                     <th className="p-4 font-semibold text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {processos.map((proc) => (
-                    <tr key={proc.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 font-medium text-slate-800">{proc.numero || 'N/A'}</td>
-                      <td className="p-4 text-slate-600">{proc.reclamante || '-'}</td>
-                      <td className="p-4 text-slate-600">{proc.reclamada || '-'}</td>
-                      <td className="p-4 text-slate-600">
-                        {proc.valor_causa ? `R$ ${Number(proc.valor_causa).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
-                      </td>
-                      <td className="p-4 text-emerald-600 font-medium">
-                        {proc.honorarios ? `R$ ${Number(proc.honorarios).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
-                      </td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          proc.status === 'Encerrado' 
-                            ? 'bg-emerald-50 text-emerald-700' 
-                            : 'bg-blue-50 text-blue-700'
-                        }`}>
-                          {proc.status || 'Em andamento'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleExcluir(proc.id)}
-                          className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50"
-                        >
-                          Excluir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {processos.map((proc) => {
+                    const dataCriacao = proc.created_at ? new Date(proc.created_at) : new Date();
+                    const diasSemMov = Math.floor((new Date().getTime() - dataCriacao.getTime()) / (1000 * 60 * 60 * 24));
+                    const isParado = diasSemMov > 60 && proc.status !== 'Encerrado';
+
+                    return (
+                      <tr key={proc.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 font-medium text-slate-800">{proc.numero || 'N/A'}</td>
+                        <td className="p-4 text-slate-600">{proc.reclamante || '-'}</td>
+                        <td className="p-4 text-slate-600">{proc.reclamada || '-'}</td>
+                        <td className="p-4 text-slate-600">
+                          {proc.valor_causa ? `R$ ${Number(proc.valor_causa).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td className="p-4 text-emerald-600 font-medium">
+                          {proc.honorarios ? `R$ ${Number(proc.honorarios).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col items-start gap-1">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              proc.status === 'Encerrado' 
+                                ? 'bg-emerald-50 text-emerald-700' 
+                                : 'bg-blue-50 text-blue-700'
+                            }`}>
+                              {proc.status || 'Em andamento'}
+                            </span>
+                            
+                            {isParado && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                ⚠️ Parado há +60 dias
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 text-right space-x-2">
+                          <button
+                            onClick={() => setProcessoEditando(proc)}
+                            className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleExcluir(proc.id)}
+                            className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50"
+                          >
+                            Excluir
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -382,7 +447,7 @@ export default function GestaoProcessos() {
 
       </div>
 
-      {/* MODAL DE CADASTRO */}
+      {/* MODAL DE NOVO CADASTRO */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -427,8 +492,7 @@ export default function GestaoProcessos() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Valor da Causa (R$)</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     placeholder="0.00"
                     className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={novoProcesso.valor_causa}
@@ -438,8 +502,7 @@ export default function GestaoProcessos() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Honorários (R$)</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     placeholder="0.00"
                     className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={novoProcesso.honorarios}
@@ -474,6 +537,98 @@ export default function GestaoProcessos() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                 >
                   {saving ? 'Salvando...' : 'Cadastrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE PROCESSO */}
+      {processoEditando && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Editar Processo</h3>
+
+            <form onSubmit={handleSalvarEdicao} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Número do Processo *</label>
+                <input
+                  type="text"
+                  required
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={processoEditando.numero || ''}
+                  onChange={(e) => setProcessoEditando({ ...processoEditando, numero: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Reclamante</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={processoEditando.reclamante || ''}
+                  onChange={(e) => setProcessoEditando({ ...processoEditando, reclamante: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Reclamada</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={processoEditando.reclamada || ''}
+                  onChange={(e) => setProcessoEditando({ ...processoEditando, reclamada: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Valor da Causa (R$)</label>
+                  <input
+                    type="text"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={processoEditando.valor_causa !== undefined && processoEditando.valor_causa !== null ? processoEditando.valor_causa : ''}
+                    onChange={(e) => setProcessoEditando({ ...processoEditando, valor_causa: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Honorários (R$)</label>
+                  <input
+                    type="text"
+                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={processoEditando.honorarios !== undefined && processoEditando.honorarios !== null ? processoEditando.honorarios : ''}
+                    onChange={(e) => setProcessoEditando({ ...processoEditando, honorarios: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                <select
+                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={processoEditando.status || 'Em andamento'}
+                  onChange={(e) => setProcessoEditando({ ...processoEditando, status: e.target.value })}
+                >
+                  <option value="Em andamento">Em andamento</option>
+                  <option value="Encerrado">Encerrado</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setProcessoEditando(null)}
+                  className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
               </div>
             </form>
