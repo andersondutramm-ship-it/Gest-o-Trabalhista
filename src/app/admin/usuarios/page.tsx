@@ -1,83 +1,183 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const router = useRouter();
+interface Usuario {
+  id: string;
+  email: string;
+  nome: string;
+  role: string;
+}
 
-  async function handleLogin(e: React.FormEvent) {
+export default function AdminUsuariosPage() {
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [role, setRole] = useState('operador');
+  const [loading, setLoading] = useState(false);
+  const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+
+  useEffect(() => {
+    carregarUsuarios();
+  }, []);
+
+  async function carregarUsuarios() {
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (data) setUsuarios(data);
+  }
+
+  async function handleCadastrarUsuario(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setErro(null);
+    setMensagem(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    // Cria o usuário na autenticação do Supabase
+    const { data, error } = await supabase.auth.signUp({
       email,
-      password,
+      password: senha,
+      options: {
+        data: { nome, role },
+      },
     });
 
     if (error) {
-      setErro('E-mail ou senha incorretos.');
-      setLoading(false);
-    } else if (data.session) {
-      router.push('/');
-      router.refresh();
+      setMensagem({ tipo: 'erro', texto: 'Erro ao cadastrar: ' + error.message });
+    } else {
+      // Grava o perfil na tabela de perfis
+      if (data.user) {
+        await supabase.from('profiles').insert([
+          {
+            id: data.user.id,
+            email,
+            nome,
+            role,
+          },
+        ]);
+      }
+
+      setMensagem({ tipo: 'sucesso', texto: 'Usuário cadastrado com sucesso!' });
+      setNome('');
+      setEmail('');
+      setSenha('');
+      carregarUsuarios();
     }
+    setLoading(false);
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200 space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold text-slate-800">Acesso Restrito</h1>
-          <p className="text-sm text-slate-500">Entre com suas credenciais para acessar o sistema</p>
+    <div className="p-6 max-w-5xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Gerenciamento de Usuários</h1>
+        <p className="text-sm text-slate-500">Cadastre novos usuários que terão acesso ao sistema</p>
+      </div>
+
+      {mensagem && (
+        <div
+          className={`p-4 rounded-lg text-sm font-medium ${
+            mensagem.tipo === 'sucesso' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}
+        >
+          {mensagem.texto}
         </div>
+      )}
 
-        {erro && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg text-center">
-            {erro}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-4">
+      {/* Form de Cadastro */}
+      <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+        <h2 className="text-lg font-bold text-slate-700 mb-4">Cadastrar Novo Usuário</h2>
+        <form onSubmit={handleCadastrarUsuario} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Nome Completo</label>
+            <input
+              type="text"
+              required
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Ex: João Silva"
+              className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail de Acesso</label>
             <input
               type="email"
               required
-              placeholder="seu@email.com"
-              className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="usuario@email.com"
+              className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Senha</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Senha Inicial</label>
             <input
               type="password"
               required
-              placeholder="••••••••"
-              className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-blue-600 text-white font-medium rounded-lg text-sm hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
-          >
-            {loading ? 'Entrando...' : 'Entrar no Sistema'}
-          </button>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Nível de Permissão</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="operador">Operador (Acesso padrão)</option>
+              <option value="admin">Administrador (Acesso total)</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-6 py-2.5 bg-blue-600 text-white font-medium rounded-lg text-sm hover:bg-blue-700 shadow disabled:opacity-50"
+            >
+              {loading ? 'Cadastrando...' : 'Criar Usuário'}
+            </button>
+          </div>
         </form>
       </div>
-    </main>
+
+      {/* Lista de Usuários Existentes */}
+      <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+        <div className="p-4 border-b border-slate-200 font-bold text-slate-700">Usuários Cadastrados</div>
+        <table className="w-full text-left text-sm text-slate-600">
+          <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+            <tr>
+              <th className="p-4">Nome</th>
+              <th className="p-4">E-mail</th>
+              <th className="p-4">Nível</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {usuarios.map((u) => (
+              <tr key={u.id}>
+                <td className="p-4 font-medium text-slate-800">{u.nome || '-'}</td>
+                <td className="p-4">{u.email}</td>
+                <td className="p-4">
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    {u.role}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

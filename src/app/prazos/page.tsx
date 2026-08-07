@@ -7,6 +7,7 @@ interface Processo {
   id: string;
   numero: string;
   reclamante?: string;
+  reclamada?: string;
 }
 
 interface Prazo {
@@ -27,7 +28,7 @@ export default function PrazosPage() {
   const [loading, setLoading] = useState(true);
   const [modalAberto, setModalAberto] = useState(false);
 
-  // Campos do formulário
+  // Formulário do novo prazo
   const [processoId, setProcessoId] = useState('');
   const [descricao, setDescricao] = useState('');
   const [dataVencimento, setDataVencimento] = useState('');
@@ -40,20 +41,18 @@ export default function PrazosPage() {
   async function carregarDados() {
     setLoading(true);
 
-    // 1. Carrega lista de processos para o Select
+    // Busca os processos para preencher a lista/dropdown
     const { data: dadosProcessos } = await supabase
       .from('processos')
-      .select('id, numero, reclamante')
+      .select('id, numero, reclamante, reclamada')
       .order('numero', { ascending: true });
 
-    if (dadosProcessos) {
+    if (dadosProcessos && dadosProcessos.length > 0) {
       setProcessos(dadosProcessos);
-      if (dadosProcessos.length > 0) {
-        setProcessoId(dadosProcessos[0].id);
-      }
+      setProcessoId(dadosProcessos[0].id);
     }
 
-    // 2. Carrega lista de prazos já salvos
+    // Busca a lista de prazos com o relacionamento de processos
     const { data: dadosPrazos } = await supabase
       .from('prazos')
       .select('*, processos(numero, reclamante)')
@@ -70,7 +69,7 @@ export default function PrazosPage() {
     e.preventDefault();
 
     if (!processoId) {
-      alert('Selecione um processo.');
+      alert('Selecione um processo cadastrado.');
       return;
     }
 
@@ -160,7 +159,7 @@ export default function PrazosPage() {
             <form onSubmit={handleSalvarPrazo} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Selecione o Processo *
+                  Selecione o Processo Cadastrado *
                 </label>
                 <select
                   required
@@ -169,7 +168,7 @@ export default function PrazosPage() {
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
                 >
                   {processos.length === 0 ? (
-                    <option value="">Nenhum processo cadastrado</option>
+                    <option value="">Nenhum processo cadastrado ainda</option>
                   ) : (
                     processos.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -187,7 +186,7 @@ export default function PrazosPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Apresentar Réplica"
+                  placeholder="Ex: Apresentar Contestação"
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
@@ -232,7 +231,7 @@ export default function PrazosPage() {
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow"
                 >
-                  Cadastrar
+                  Cadastrar Prazo
                 </button>
               </div>
             </form>
