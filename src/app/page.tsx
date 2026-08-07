@@ -18,7 +18,7 @@ export default function GestaoProcessos() {
   const [processos, setProcessos] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
-  
+
   // Modal de Novo Cadastro
   const [showModal, setShowModal] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
@@ -207,7 +207,7 @@ export default function GestaoProcessos() {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando...</div>;
   }
 
-  // TELA DE LOGIN / SEGURANÇA
+  // TELA DE LOGIN
   if (!session) {
     return (
       <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -275,7 +275,9 @@ export default function GestaoProcessos() {
   // CÁLCULO DE PROCESSOS PARADOS (+60 dias)
   const processosParados = processos.filter(p => {
     if (!p.created_at || p.status === 'Encerrado') return false;
-    const dias = Math.floor((new Date().getTime() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24));
+    const dataCriacao = new Date(p.created_at);
+    if (isNaN(dataCriacao.getTime())) return false;
+    const dias = Math.floor((new Date().getTime() - dataCriacao.getTime()) / (1000 * 60 * 60 * 24));
     return dias > 60;
   });
 
@@ -390,8 +392,10 @@ export default function GestaoProcessos() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {processos.map((proc) => {
-                    const dataCriacao = proc.created_at ? new Date(proc.created_at) : new Date();
-                    const diasSemMov = Math.floor((new Date().getTime() - dataCriacao.getTime()) / (1000 * 60 * 60 * 24));
+                    const dataCriacao = proc.created_at ? new Date(proc.created_at) : null;
+                    const diasSemMov = dataCriacao && !isNaN(dataCriacao.getTime())
+                      ? Math.floor((new Date().getTime() - dataCriacao.getTime()) / (1000 * 60 * 60 * 24))
+                      : 0;
                     const isParado = diasSemMov > 60 && proc.status !== 'Encerrado';
 
                     return (
