@@ -106,10 +106,13 @@ export default function GestaoProcessos() {
 
     try {
       setSaving(true);
+      const agora = new Date().toISOString();
+
       const { error } = await supabase
         .from('processos')
         .insert([{
           ...novoProcesso,
+          created_at: agora, // Garante que a data de criação seja gravada
           valor_causa: novoProcesso.valor_causa ? parseFloat(String(novoProcesso.valor_causa).replace(',', '.')) : 0,
           honorarios: novoProcesso.honorarios ? parseFloat(String(novoProcesso.honorarios).replace(',', '.')) : 0
         }]);
@@ -203,6 +206,16 @@ export default function GestaoProcessos() {
     document.body.removeChild(link);
   }
 
+  // CÁLCULO SEGURO DE DIAS PARADOS
+  function calcularDiasParado(dataString: string | null | undefined): number {
+    if (!dataString) return 0;
+    const dataCriacao = new Date(dataString);
+    if (isNaN(dataCriacao.getTime())) return 0;
+    const diferencaMs = new Date().getTime() - dataCriacao.getTime();
+    const dias = Math.floor(diferencaMs / (1000 * 60 * 60 * 24));
+    return dias < 0 ? 0 : dias;
+  }
+
   if (loadingAuth) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando...</div>;
   }
@@ -272,13 +285,9 @@ export default function GestaoProcessos() {
     );
   }
 
-  // CÁLCULO DE PROCESSOS PARADOS (+60 dias)
   const processosParados = processos.filter(p => {
-    if (!p.created_at || p.status === 'Encerrado') return false;
-    const dataCriacao = new Date(p.created_at);
-    if (isNaN(dataCriacao.getTime())) return false;
-    const dias = Math.floor((new Date().getTime() - dataCriacao.getTime()) / (1000 * 60 * 60 * 24));
-    return dias > 60;
+    if (p.status === 'Encerrado') return false;
+    return calcularDiasParado(p.created_at) > 60;
   });
 
   return (
@@ -392,10 +401,7 @@ export default function GestaoProcessos() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {processos.map((proc) => {
-                    const dataCriacao = proc.created_at ? new Date(proc.created_at) : null;
-                    const diasSemMov = dataCriacao && !isNaN(dataCriacao.getTime())
-                      ? Math.floor((new Date().getTime() - dataCriacao.getTime()) / (1000 * 60 * 60 * 24))
-                      : 0;
+                    const diasSemMov = calcularDiasParado(proc.created_at);
                     const isParado = diasSemMov > 60 && proc.status !== 'Encerrado';
 
                     return (
