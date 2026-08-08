@@ -98,7 +98,7 @@ export default function ProcessosPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500 font-medium">Carregando modulo de processos...</p>
+        <p className="text-slate-500 font-medium">Carregando módulo de processos...</p>
       </div>
     );
   }

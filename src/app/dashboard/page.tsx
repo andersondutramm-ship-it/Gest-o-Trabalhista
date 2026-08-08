@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 
-export default function DashboardPage() {
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center">
       <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center space-y-6">
@@ -18,6 +18,13 @@ export default function DashboardPage() {
             className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
           >
             <span>⚖️</span> Gestão de Processos
+          </Link>
+
+          <Link
+            href="/prazos"
+            className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2"
+          >
+            <span>📅</span> Gestão de Prazos
           </Link>
 
           <Link
