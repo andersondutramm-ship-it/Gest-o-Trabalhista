@@ -29,13 +29,11 @@ export default function DashboardPage() {
   async function carregarDados() {
     setLoading(true);
 
-    // Obtém o usuário logado no Supabase (se houver)
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.email) {
       setUsuarioEmail(session.user.email);
     }
 
-    // Busca os processos da tabela
     const { data, error } = await supabase
       .from('processos')
       .select('*')
@@ -44,7 +42,6 @@ export default function DashboardPage() {
     if (!error && data) {
       setProcessos(data);
     } else {
-      // Dados de exemplo para renderizar caso a tabela esteja vazia ou em configuração
       setProcessos([
         {
           id: '1',
@@ -61,7 +58,6 @@ export default function DashboardPage() {
     setLoading(false);
   }
 
-  // Cálculos dos Cards
   const totalProcessos = processos.length;
   const emAndamento = processos.filter((p) => p.status === 'Em andamento' || p.status === 'Ativo').length;
   const parados = processos.filter((p) => p.status === 'Parado' || p.status === 'Suspenso').length;
@@ -104,6 +100,13 @@ export default function DashboardPage() {
             </Link>
 
             <Link
+              href="/admin/usuarios"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
+            >
+              👥 Cadastrar / Ver Usuários
+            </Link>
+
+            <Link
               href="/processos"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
             >
@@ -124,31 +127,26 @@ export default function DashboardPage() {
 
         {/* 2. CARDS DE MÉTRICAS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Card 1 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL DE PROCESSOS</p>
             <p className="text-3xl font-bold text-slate-800">{totalProcessos}</p>
           </div>
 
-          {/* Card 2 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">EM ANDAMENTO</p>
             <p className="text-3xl font-bold text-blue-600">{emAndamento}</p>
           </div>
 
-          {/* Card 3 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">PARADOS (+60 DIAS)</p>
             <p className="text-3xl font-bold text-slate-800">{parados}</p>
           </div>
 
-          {/* Card 4 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL VALOR DA CAUSA</p>
             <p className="text-xl font-bold text-slate-800">{formatarMoeda(totalValorCausa)}</p>
           </div>
 
-          {/* Card 5 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL HONORÁRIOS</p>
             <p className="text-xl font-bold text-emerald-600">{formatarMoeda(totalHonorarios)}</p>
