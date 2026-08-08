@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Users, Plus, Edit3, Trash2, ArrowLeft, Shield } from 'lucide-react';
+import { Users, Plus, Edit3, Trash2, ArrowLeft, Shield, Lock } from 'lucide-react';
 
 interface Usuario {
   id: string;
@@ -16,10 +16,12 @@ export default function UsuariosPage() {
   const [loading, setLoading] = useState(true);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [modalAberto, setModalAberto] = useState(false);
-  const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
-
+  
+  // States do formulário
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [role, setRole] = useState('Usuário');
+  const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     carregarUsuarios();
@@ -32,158 +34,105 @@ export default function UsuariosPage() {
     setLoading(false);
   }
 
-  function abrirModalCriar() {
-    setUsuarioEditando(null);
-    setEmail('');
-    setRole('Usuário');
-    setModalAberto(true);
-  }
-
-  function abrirModalEditar(u: Usuario) {
-    setUsuarioEditando(u);
-    setEmail(u.email);
-    setRole(u.role || 'Usuário');
-    setModalAberto(true);
-  }
-
   async function handleSalvarUsuario(e: React.FormEvent) {
     e.preventDefault();
+    setSalvando(true);
 
-    if (usuarioEditando) {
-      await supabase.from('profiles').update({ email, role }).eq('id', usuarioEditando.id);
-    } else {
-      await supabase.from('profiles').insert([{ id: crypto.randomUUID(), email, role }]);
+    try {
+      // 1. Criar usuário na autenticação do Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) throw authError;
+
+      // 2. Criar perfil na tabela profiles
+      if (authData.user) {
+        await supabase.from('profiles').insert([{ 
+          id: authData.user.id, 
+          email, 
+          role 
+        }]);
+      }
+
+      alert('Usuário cadastrado com sucesso!');
+      setModalAberto(false);
+      carregarUsuarios();
+    } catch (error: any) {
+      alert('Erro ao cadastrar: ' + error.message);
+    } finally {
+      setSalvando(false);
     }
-
-    setModalAberto(false);
-    carregarUsuarios();
-  }
-
-  async function handleExcluirUsuario(id: string) {
-    if (!confirm('Remover este usuário?')) return;
-    await supabase.from('profiles').delete().eq('id', id);
-    carregarUsuarios();
   }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-wrap justify-between items-center gap-4">
+        {/* CABEÇALHO */}
+        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-amber-400 flex items-center gap-2 font-serif uppercase tracking-wider">
               <Users className="w-6 h-6" /> Gestão de Usuários
             </h1>
-            <p className="text-xs text-neutral-400 mt-1">Controle de acessos e permissões da equipe</p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={abrirModalCriar}
-              className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-600/20 uppercase tracking-wider"
-            >
-              <Plus className="w-4 h-4" /> Cadastrar Usuário
+          <div className="flex gap-3">
+            <button onClick={() => setModalAberto(true)} className="px-4 py-2 bg-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Novo Usuário
             </button>
-
-            <Link href="/" className="px-4 py-2 bg-neutral-950 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-2">
-              <ArrowLeft className="w-4 h-4" /> Voltar ao Painel
-            </Link>
+            <Link href="/" className="px-4 py-2 border border-neutral-800 text-xs rounded-xl">Voltar</Link>
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
+        {/* LISTA */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
           <table className="w-full text-left text-xs text-neutral-300">
-            <thead className="bg-neutral-950 text-neutral-400 uppercase font-semibold border-b border-neutral-800">
+            <thead className="bg-neutral-950 text-neutral-400 border-b border-neutral-800 uppercase">
               <tr>
                 <th className="px-6 py-4">E-mail</th>
-                <th className="px-6 py-4">Função</th>
-                <th className="px-6 py-4">Data de Criação</th>
+                <th className="px-6 py-4">Cargo</th>
                 <th className="px-6 py-4 text-center">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-800/60">
-              {loading ? (
-                <tr><td colSpan={4} className="text-center py-8 text-neutral-500">Carregando usuários...</td></tr>
-              ) : usuarios.length === 0 ? (
-                <tr><td colSpan={4} className="text-center py-8 text-neutral-500">Nenhum usuário cadastrado.</td></tr>
-              ) : (
-                usuarios.map((u) => (
-                  <tr key={u.id} className="hover:bg-neutral-800/30 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-neutral-200">{u.email}</td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 bg-neutral-950 border border-neutral-800 text-amber-400 rounded-md text-[10px] flex items-center gap-1 w-fit">
-                        <Shield className="w-3 h-3" /> {u.role || 'Usuário'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-neutral-400">
-                      {new Date(u.created_at).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => abrirModalEditar(u)} className="p-1.5 text-neutral-400 hover:text-amber-400">
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleExcluirUsuario(u.id)} className="p-1.5 text-neutral-400 hover:text-red-400">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+            <tbody>
+              {usuarios.map((u) => (
+                <tr key={u.id} className="border-b border-neutral-800">
+                  <td className="px-6 py-4">{u.email}</td>
+                  <td className="px-6 py-4">{u.role}</td>
+                  <td className="px-6 py-4 text-center">
+                    <button onClick={async () => { await supabase.from('profiles').delete().eq('id', u.id); carregarUsuarios(); }} className="text-red-400"><Trash2 className="w-4 h-4"/></button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-
       </div>
 
+      {/* MODAL DE CADASTRO COM SENHA */}
       {modalAberto && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <h2 className="text-lg font-bold text-neutral-100">{usuarioEditando ? 'Editar Usuário' : 'Novo Usuário'}</h2>
-            <form onSubmit={handleSalvarUsuario} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">E-mail *</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@escritorio.com"
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4">
+          <form onSubmit={handleSalvarUsuario} className="bg-neutral-900 p-6 rounded-2xl w-full max-w-sm space-y-4 border border-neutral-800">
+            <h2 className="text-lg font-bold">Cadastrar Acesso</h2>
+            
+            <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-neutral-950 p-2.5 rounded-lg border border-neutral-700 text-xs" />
+            
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
+              <input type="password" placeholder="Senha inicial" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-neutral-950 p-2.5 pl-10 rounded-lg border border-neutral-700 text-xs" />
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Função / Cargo</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
-                >
-                  <option value="Usuário">Usuário</option>
-                  <option value="Administrador">Administrador</option>
-                  <option value="Advogado">Advogado</option>
-                </select>
-              </div>
+            <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full bg-neutral-950 p-2.5 rounded-lg border border-neutral-700 text-xs">
+              <option value="Usuário">Usuário</option>
+              <option value="Administrador">Administrador</option>
+            </select>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={() => setModalAberto(false)}
-                  className="px-4 py-2 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 uppercase tracking-wider"
-                >
-                  Salvar
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="flex gap-2 pt-2">
+              <button type="button" onClick={() => setModalAberto(false)} className="flex-1 p-2 rounded-lg border border-neutral-700">Cancelar</button>
+              <button type="submit" disabled={salvando} className="flex-1 p-2 bg-amber-600 rounded-lg text-neutral-950 font-bold">{salvando ? 'Criando...' : 'Criar Acesso'}</button>
+            </div>
+          </form>
         </div>
       )}
     </div>
