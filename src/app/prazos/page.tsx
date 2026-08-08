@@ -3,95 +3,111 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Calendar, Plus, Edit3, Trash2, ArrowLeft, Clock, AlertCircle } from 'lucide-react';
+import { Calendar, Plus, Trash2, ArrowLeft, Clock, CheckCircle2 } from 'lucide-react';
+
+interface Processo {
+  id: string;
+  numero: string;
+  reclamante?: string;
+  parte?: string;
+}
 
 interface Prazo {
   id: string;
-  processo_numero: string;
+  processo_id: string;
   descricao: string;
-  data_vencimento: string;
-  status: 'Pendente' | 'Em Andamento' | 'Concluído';
+  data_fatal: string;
+  status: string;
+  processos?: Processo;
 }
 
 export default function PrazosPage() {
   const [loading, setLoading] = useState(true);
   const [prazos, setPrazos] = useState<Prazo[]>([]);
+  const [processos, setProcessos] = useState<Processo[]>([]);
   const [modalAberto, setModalAberto] = useState(false);
-  const [prazoEditando, setPrazoEditando] = useState<Prazo | null>(null);
 
-  // Form State
-  const [processoNumero, setProcessoNumero] = useState('');
+  // Campos do formulário
+  const [processoId, setProcessoId] = useState('');
   const [descricao, setDescricao] = useState('');
-  const [dataVencimento, setDataVencimento] = useState('');
-  const [status, setStatus] = useState<'Pendente' | 'Em Andamento' | 'Concluído'>('Pendente');
+  const [dataFatal, setDataFatal] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    carregarPrazos();
+    carregarDados();
   }, []);
 
-  async function carregarPrazos() {
+  async function carregarDados() {
     setLoading(true);
-    const { data } = await supabase
+    
+    // 1. Carrega os processos para popular o select
+    const { data: dataProcessos } = await supabase.from('processos').select('*');
+    if (dataProcessos) setProcessos(dataProcessos);
+
+    // 2. Carrega os prazos trazendo também os dados do processo associado
+    const { data: dataPrazos, error } = await supabase
       .from('prazos')
-      .select('*')
-      .order('data_vencimento', { ascending: true });
+      .select(`
+        *,
+        processos (
+          id,
+          numero,
+          reclamante,
+          parte
+        )
+      `)
+      .order('data_fatal', { ascending: true });
 
-    if (data) setPrazos(data);
+    if (error) {
+      console.error('Erro ao carregar prazos:', error);
+    } else if (dataPrazos) {
+      setPrazos(dataPrazos);
+    }
+
     setLoading(false);
-  }
-
-  function abrirModalCriar() {
-    setPrazoEditando(null);
-    setProcessoNumero('');
-    setDescricao('');
-    setDataVencimento('');
-    setStatus('Pendente');
-    setModalAberto(true);
-  }
-
-  function abrirModalEditar(p: Prazo) {
-    setPrazoEditando(p);
-    setProcessoNumero(p.processo_numero || '');
-    setDescricao(p.descricao);
-    setDataVencimento(p.data_vencimento);
-    setStatus(p.status);
-    setModalAberto(true);
   }
 
   async function handleSalvarPrazo(e: React.FormEvent) {
     e.preventDefault();
-    const payload = {
-      processo_numero: processoNumero,
-      descricao,
-      data_vencimento: dataVencimento,
-      status,
-    };
-
-    if (prazoEditando) {
-      await supabase.from('prazos').update(payload).eq('id', prazoEditando.id);
-    } else {
-      await supabase.from('prazos').insert([payload]);
+    if (!processoId) {
+      alert('Selecione um processo.');
+      return;
     }
 
-    setModalAberto(false);
-    carregarPrazos();
+    setSalvando(true);
+
+    try {
+      const { error } = await supabase.from('prazos').insert([{
+        processo_id: processoId,
+        descricao,
+        data_fatal: dataFatal,
+        status: 'Pendente'
+      }]);
+
+      if (error) throw error;
+
+      alert('Prazo cadastrado com sucesso!');
+      setModalAberto(false);
+      setProcessoId('');
+      setDescricao('');
+      setDataFatal('');
+      carregarDados();
+    } catch (error: any) {
+      alert('Erro ao salvar prazo: ' + error.message);
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function handleExcluirPrazo(id: string) {
-    if (!confirm('Excluir este prazo?')) return;
-    await supabase.from('prazos').delete().eq('id', id);
-    carregarPrazos();
-  }
+    if (!confirm('Deseja realmente excluir este prazo?')) return;
 
-  function calcularUrgencia(dataIso: string) {
-    const hoje = new Date();
-    hoje.setHours(0,0,0,0);
-    const vencimento = new Date(dataIso + 'T00:00:00');
-    const diffDays = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 0) return { label: 'URGENTE / HOJE', class: 'bg-red-500/10 text-red-400 border-red-500/30' };
-    if (diffDays <= 3) return { label: `PRÓXIMO (${diffDays}d)`, class: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
-    return { label: 'NORMAL', class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+    const { error } = await supabase.from('prazos').delete().eq('id', id);
+    if (error) {
+      alert('Erro ao excluir: ' + error.message);
+    } else {
+      carregarDados();
+    }
   }
 
   return (
@@ -99,75 +115,74 @@ export default function PrazosPage() {
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* CABEÇALHO */}
-        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-wrap justify-between items-center gap-4">
+        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-wrap justify-between items-center gap-4 shadow-xl">
           <div>
             <h1 className="text-xl font-bold text-amber-400 flex items-center gap-2 font-serif uppercase tracking-wider">
-              <Calendar className="w-6 h-6" /> Gestão de Prazos Processuais
+              <Calendar className="w-6 h-6" /> Controle de Prazos
             </h1>
-            <p className="text-xs text-neutral-400 mt-1">Acompanhamento e controle de prazos críticos</p>
+            <p className="text-xs text-neutral-400 mt-1">Gerencie os prazos processuais e datas fatais</p>
           </div>
-
           <div className="flex items-center gap-3">
-            <button
-              onClick={abrirModalCriar}
-              className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-600/20 uppercase tracking-wider"
+            <button 
+              onClick={() => setModalAberto(true)} 
+              className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-600/20 uppercase tracking-wider transition-all"
             >
-              <Plus className="w-4 h-4" /> Cadastrar Prazo
+              <Plus className="w-4 h-4" /> Novo Prazo
             </button>
-
-            <Link href="/" className="px-4 py-2 bg-neutral-950 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-2">
-              <ArrowLeft className="w-4 h-4" /> Voltar ao Painel
+            <Link href="/" className="px-4 py-2 bg-neutral-950 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-2 transition-all">
+              <ArrowLeft className="w-4 h-4" /> Voltar
             </Link>
           </div>
         </div>
 
-        {/* TABELA */}
+        {/* TABELA DE PRAZOS */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
           <table className="w-full text-left text-xs text-neutral-300">
-            <thead className="bg-neutral-950 text-neutral-400 uppercase font-semibold border-b border-neutral-800">
+            <thead className="bg-neutral-950 text-neutral-400 border-b border-neutral-800 uppercase font-semibold">
               <tr>
-                <th className="px-6 py-4">Processo</th>
+                <th className="px-6 py-4">Processo / Parte</th>
                 <th className="px-6 py-4">Descrição do Prazo</th>
-                <th className="px-6 py-4">Vencimento</th>
-                <th className="px-6 py-4">Urgência</th>
+                <th className="px-6 py-4">Data Fatal</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/60">
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-8 text-neutral-500">Carregando prazos...</td></tr>
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-neutral-500">Carregando prazos...</td>
+                </tr>
               ) : prazos.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-8 text-neutral-500">Nenhum prazo cadastrado.</td></tr>
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-neutral-500">Nenhum prazo cadastrado.</td>
+                </tr>
               ) : (
                 prazos.map((p) => {
-                  const urg = calcularUrgencia(p.data_vencimento);
+                  const proc = p.processos;
+                  const nomeParte = proc?.reclamante || proc?.parte || 'Sem Parte Informada';
                   return (
                     <tr key={p.id} className="hover:bg-neutral-800/30 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-neutral-200">{p.processo_numero || '-'}</td>
-                      <td className="px-6 py-4">{p.descricao}</td>
-                      <td className="px-6 py-4 font-bold text-neutral-200">
-                        {new Date(p.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-neutral-200">{proc?.numero || 'N/A'}</div>
+                        <div className="text-[11px] text-amber-400/90">{nomeParte}</div>
+                      </td>
+                      <td className="px-6 py-4 text-neutral-300">{p.descricao}</td>
+                      <td className="px-6 py-4 font-mono text-neutral-200">
+                        {p.data_fatal ? new Date(p.data_fatal + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/A'}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-md border text-[10px] font-bold ${urg.class}`}>
-                          {urg.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="px-2.5 py-1 bg-neutral-950 border border-neutral-800 text-neutral-300 rounded-md text-[10px]">
-                          {p.status}
+                        <span className="px-2.5 py-1 bg-neutral-950 border border-neutral-800 text-amber-400 rounded-md text-[10px] flex items-center gap-1 w-fit">
+                          <Clock className="w-3 h-3" /> {p.status || 'Pendente'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => abrirModalEditar(p)} className="p-1.5 text-neutral-400 hover:text-amber-400">
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleExcluirPrazo(p.id)} className="p-1.5 text-neutral-400 hover:text-red-400">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <button 
+                          onClick={() => handleExcluirPrazo(p.id)} 
+                          className="p-1.5 text-neutral-400 hover:text-red-400 rounded-lg hover:bg-neutral-800 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -176,75 +191,71 @@ export default function PrazosPage() {
             </tbody>
           </table>
         </div>
-
       </div>
 
-      {/* MODAL */}
+      {/* MODAL DE NOVO PRAZO */}
       {modalAberto && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <h2 className="text-lg font-bold text-neutral-100">{prazoEditando ? 'Editar Prazo' : 'Novo Prazo'}</h2>
+            <h2 className="text-lg font-bold text-neutral-100 flex items-center gap-2 border-b border-neutral-800 pb-3">
+              <Calendar className="w-5 h-5 text-amber-400" /> Cadastrar Novo Prazo
+            </h2>
+            
             <form onSubmit={handleSalvarPrazo} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Número do Processo</label>
-                <input
-                  type="text"
-                  value={processoNumero}
-                  onChange={(e) => setProcessoNumero(e.target.value)}
-                  placeholder="0000000-00.2026.5.02.0000"
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Processo *</label>
+                <select 
+                  value={processoId} 
+                  onChange={(e) => setProcessoId(e.target.value)} 
+                  required
                   className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
-                />
+                >
+                  <option value="">Selecione o Processo</option>
+                  {processos.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.numero} - {p.reclamante || p.parte || 'Sem Parte Informada'}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Descrição do Prazo *</label>
-                <input
-                  type="text"
-                  required
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  placeholder="Ex: Réplica à Contestação"
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
+                <input 
+                  type="text" 
+                  placeholder="Ex: Apresentação de Contestação" 
+                  required 
+                  value={descricao} 
+                  onChange={(e) => setDescricao(e.target.value)} 
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500" 
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Data de Vencimento *</label>
-                <input
-                  type="date"
-                  required
-                  value={dataVencimento}
-                  onChange={(e) => setDataVencimento(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Data Fatal *</label>
+                <input 
+                  type="date" 
+                  required 
+                  value={dataFatal} 
+                  onChange={(e) => setDataFatal(e.target.value)} 
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500" 
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
-                >
-                  <option value="Pendente">Pendente</option>
-                  <option value="Em Andamento">Em Andamento</option>
-                  <option value="Concluído">Concluído</option>
-                </select>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={() => setModalAberto(false)}
-                  className="px-4 py-2 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                <button 
+                  type="button" 
+                  onClick={() => setModalAberto(false)} 
+                  className="px-4 py-2 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 rounded-xl text-xs font-semibold transition-all"
                 >
                   Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 uppercase tracking-wider"
+                <button 
+                  type="submit" 
+                  disabled={salvando} 
+                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 uppercase tracking-wider transition-all"
                 >
-                  Salvar
+                  {salvando ? 'Salvando...' : 'Salvar Prazo'}
                 </button>
               </div>
             </form>
