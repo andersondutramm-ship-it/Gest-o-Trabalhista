@@ -17,7 +17,6 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [modalAberto, setModalAberto] = useState(false);
   
-  // States do formulário
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('Usuário');
@@ -39,7 +38,7 @@ export default function UsuariosPage() {
     setSalvando(true);
 
     try {
-      // 1. Criar o usuário no Auth (utilizando signUp padrão do client para evitar conflito de chave de serviço)
+      // Cria o usuário na autenticação. O gatilho do banco criará o registro em 'profiles' automaticamente.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -47,15 +46,9 @@ export default function UsuariosPage() {
 
       if (authError) throw authError;
 
-      // 2. Criar ou atualizar o perfil na tabela profiles associado ao ID gerado
-      if (authData.user) {
-        const { error: insertError } = await supabase.from('profiles').upsert([{ 
-          id: authData.user.id, 
-          email, 
-          role 
-        }]);
-
-        if (insertError) throw insertError;
+      // Se o usuário foi criado com sucesso, atualizamos a role caso seja diferente de "Usuário"
+      if (authData.user && role !== 'Usuário') {
+        await supabase.from('profiles').update({ role }).eq('id', authData.user.id);
       }
 
       alert('Usuário cadastrado com sucesso!');
@@ -87,7 +80,6 @@ export default function UsuariosPage() {
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* CABEÇALHO */}
         <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-wrap justify-between items-center gap-4">
           <div>
             <h1 className="text-xl font-bold text-amber-400 flex items-center gap-2 font-serif uppercase tracking-wider">
@@ -108,7 +100,6 @@ export default function UsuariosPage() {
           </div>
         </div>
 
-        {/* LISTA DE USUÁRIOS */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
           <table className="w-full text-left text-xs text-neutral-300">
             <thead className="bg-neutral-950 text-neutral-400 border-b border-neutral-800 uppercase font-semibold">
@@ -157,7 +148,6 @@ export default function UsuariosPage() {
         </div>
       </div>
 
-      {/* MODAL DE CADASTRO */}
       {modalAberto && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
