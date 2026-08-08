@@ -11,9 +11,8 @@ export default function LoginPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validação temporária / Integração com Supabase Auth
     if (email && senha) {
-      router.push('/processos'); // Redireciona para os processos após logar
+      router.push('/dashboard'); // Redireciona para o Dashboard (Painel Inicial)
     } else {
       alert('Por favor, preencha todos os campos.');
     }
