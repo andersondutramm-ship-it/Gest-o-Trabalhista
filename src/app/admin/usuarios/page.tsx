@@ -2,28 +2,24 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { Users, Plus, Edit3, Trash2, ArrowLeft, Shield } from 'lucide-react';
 
 interface Usuario {
   id: string;
   email: string;
+  role: string;
   created_at: string;
-  last_sign_in_at?: string;
-  role?: string;
 }
 
-export default function AdminUsuariosPage() {
-  const router = useRouter();
+export default function UsuariosPage() {
   const [loading, setLoading] = useState(true);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-
-  // Modais e Estados do Formulário
   const [modalAberto, setModalAberto] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
+
   const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [salvando, setSalvando] = useState(false);
+  const [role, setRole] = useState('Usuário');
 
   useEffect(() => {
     carregarUsuarios();
@@ -31,253 +27,159 @@ export default function AdminUsuariosPage() {
 
   async function carregarUsuarios() {
     setLoading(true);
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error && data && data.length > 0) {
-      setUsuarios(data);
-    } else {
-      // Dados padrão de exibição
-      setUsuarios([
-        {
-          id: '1',
-          email: 'almeida.andersondutra.mm@gmail.com',
-          created_at: new Date().toISOString(),
-          last_sign_in_at: undefined,
-          role: 'Administrador',
-        },
-      ]);
-    }
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (data) setUsuarios(data);
     setLoading(false);
   }
 
   function abrirModalCriar() {
     setUsuarioEditando(null);
     setEmail('');
-    setSenha('');
+    setRole('Usuário');
     setModalAberto(true);
   }
 
-  function abrirModalEditar(user: Usuario) {
-    setUsuarioEditando(user);
-    setEmail(user.email);
-    setSenha('');
+  function abrirModalEditar(u: Usuario) {
+    setUsuarioEditando(u);
+    setEmail(u.email);
+    setRole(u.role || 'Usuário');
     setModalAberto(true);
   }
 
   async function handleSalvarUsuario(e: React.FormEvent) {
     e.preventDefault();
-    setSalvando(true);
 
-    try {
-      if (usuarioEditando) {
-        // Atualizar usuário existente
-        const { error } = await supabase
-          .from('profiles')
-          .update({ email })
-          .eq('id', usuarioEditando.id);
-
-        if (error) throw error;
-
-        setUsuarios((prev) =>
-          prev.map((u) => (u.id === usuarioEditando.id ? { ...u, email } : u))
-        );
-        alert('Usuário atualizado com sucesso!');
-      } else {
-        // Criar novo usuário no Supabase Auth ou tabela profiles
-        const { data, error } = await supabase.from('profiles').insert([
-          {
-            email,
-            created_at: new Date().toISOString(),
-          },
-        ]).select();
-
-        if (error) {
-          // Se a tabela profiles não suportar inserção direta sem Auth
-          setUsuarios((prev) => [
-            ...prev,
-            {
-              id: String(Date.now()),
-              email,
-              created_at: new Date().toISOString(),
-              role: 'Usuário',
-            },
-          ]);
-        } else if (data) {
-          setUsuarios((prev) => [...prev, ...data]);
-        }
-        alert('Usuário cadastrado com sucesso!');
-      }
-
-      setModalAberto(false);
-    } catch (err: any) {
-      alert('Erro ao salvar usuário: ' + (err.message || 'Verifique as permissões.'));
-    } finally {
-      setSalvando(false);
+    if (usuarioEditando) {
+      await supabase.from('profiles').update({ email, role }).eq('id', usuarioEditando.id);
+    } else {
+      await supabase.from('profiles').insert([{ id: crypto.randomUUID(), email, role }]);
     }
+
+    setModalAberto(false);
+    carregarUsuarios();
   }
 
   async function handleExcluirUsuario(id: string) {
-    if (!confirm('Tem certeza que deseja excluir este usuário?')) return;
-
-    try {
-      const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) throw error;
-
-      setUsuarios((prev) => prev.filter((u) => u.id !== id));
-      alert('Usuário excluído com sucesso!');
-    } catch (err: any) {
-      // Fallback local se não conseguir deletar do banco
-      setUsuarios((prev) => prev.filter((u) => u.id !== id));
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500 font-medium">Carregando usuários...</p>
-      </div>
-    );
+    if (!confirm('Remover este usuário?')) return;
+    await supabase.from('profiles').delete().eq('id', id);
+    carregarUsuarios();
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Cabeçalho */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-wrap justify-between items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <span>👥</span> Gerenciamento de Usuários
+            <h1 className="text-xl font-bold text-amber-400 flex items-center gap-2 font-serif uppercase tracking-wider">
+              <Users className="w-6 h-6" /> Gestão de Usuários
             </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Visualize, adicione, edite e remova contas com acesso ao sistema.
-            </p>
+            <p className="text-xs text-neutral-400 mt-1">Controle de acessos e permissões da equipe</p>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={abrirModalCriar}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center gap-2"
+              className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-600/20 uppercase tracking-wider"
             >
-              <span>+</span> Novo Usuário
+              <Plus className="w-4 h-4" /> Cadastrar Usuário
             </button>
 
-            <Link
-              href="/"
-              className="px-4 py-2 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg transition-colors"
-            >
-              ← Voltar para a Home
+            <Link href="/" className="px-4 py-2 bg-neutral-950 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-2">
+              <ArrowLeft className="w-4 h-4" /> Voltar ao Painel
             </Link>
           </div>
         </div>
 
-        {/* Tabela de Listagem */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <h2 className="font-bold text-slate-800 text-base">Usuários Registrados</h2>
-            <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
-              Total: {usuarios.length}
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-xs text-slate-500 uppercase border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-3 font-semibold">E-mail</th>
-                  <th className="px-6 py-3 font-semibold">Data de Criação</th>
-                  <th className="px-6 py-3 font-semibold">Último Acesso</th>
-                  <th className="px-6 py-3 font-semibold text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {usuarios.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-800">{user.email}</td>
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
+          <table className="w-full text-left text-xs text-neutral-300">
+            <thead className="bg-neutral-950 text-neutral-400 uppercase font-semibold border-b border-neutral-800">
+              <tr>
+                <th className="px-6 py-4">E-mail</th>
+                <th className="px-6 py-4">Função</th>
+                <th className="px-6 py-4">Data de Criação</th>
+                <th className="px-6 py-4 text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-800/60">
+              {loading ? (
+                <tr><td colSpan={4} className="text-center py-8 text-neutral-500">Carregando usuários...</td></tr>
+              ) : usuarios.length === 0 ? (
+                <tr><td colSpan={4} className="text-center py-8 text-neutral-500">Nenhum usuário cadastrado.</td></tr>
+              ) : (
+                usuarios.map((u) => (
+                  <tr key={u.id} className="hover:bg-neutral-800/30 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-neutral-200">{u.email}</td>
                     <td className="px-6 py-4">
-                      {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                      <span className="px-2.5 py-1 bg-neutral-950 border border-neutral-800 text-amber-400 rounded-md text-[10px] flex items-center gap-1 w-fit">
+                        <Shield className="w-3 h-3" /> {u.role || 'Usuário'}
+                      </span>
                     </td>
-                    <td className="px-6 py-4">
-                      {user.last_sign_in_at
-                        ? new Date(user.last_sign_in_at).toLocaleDateString('pt-BR')
-                        : 'Nunca acessou'}
+                    <td className="px-6 py-4 text-neutral-400">
+                      {new Date(u.created_at).toLocaleDateString('pt-BR')}
                     </td>
-                    <td className="px-6 py-4 text-center space-x-3">
-                      <button
-                        onClick={() => abrirModalEditar(user)}
-                        className="text-xs text-blue-600 hover:underline font-medium"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleExcluirUsuario(user.id)}
-                        className="text-xs text-red-500 hover:underline font-medium"
-                      >
-                        Excluir
-                      </button>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => abrirModalEditar(u)} className="p-1.5 text-neutral-400 hover:text-amber-400">
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleExcluirUsuario(u.id)} className="p-1.5 text-neutral-400 hover:text-red-400">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
 
       </div>
 
-      {/* Modal de Cadastro / Edição */}
       {modalAberto && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-slate-200">
-            <h2 className="text-xl font-bold text-slate-800">
-              {usuarioEditando ? 'Editar Usuário' : 'Novo Usuário'}
-            </h2>
-
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <h2 className="text-lg font-bold text-neutral-100">{usuarioEditando ? 'Editar Usuário' : 'Novo Usuário'}</h2>
             <form onSubmit={handleSalvarUsuario} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">E-mail *</label>
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">E-mail *</label>
                 <input
                   type="email"
                   required
-                  placeholder="usuario@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  placeholder="usuario@escritorio.com"
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              {!usuarioEditando && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Senha *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Função / Cargo</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Usuário">Usuário</option>
+                  <option value="Administrador">Administrador</option>
+                  <option value="Advogado">Advogado</option>
+                </select>
+              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-3 pt-4 border-t border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setModalAberto(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
+                  className="px-4 py-2 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={salvando}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow"
+                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 uppercase tracking-wider"
                 >
-                  {salvando ? 'Salvando...' : 'Salvar'}
+                  Salvar
                 </button>
               </div>
             </form>

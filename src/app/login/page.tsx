@@ -1,203 +1,102 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { Scale, Lock, Mail, AlertCircle } from 'lucide-react';
 
-interface Processo {
-  id?: string;
-  numero_processo: string;
-  reclamante: string;
-  reclamada: string;
-  valor_causa: number;
-  honorarios: number;
-  status: string;
-  created_at?: string;
-}
-
-export default function DashboardPage() {
+export default function LoginPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [usuarioEmail, setUsuarioEmail] = useState('dutra.anderson@hotmail.com');
-  const [processos, setProcessos] = useState<Processo[]>([]);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
-  async function carregarDados() {
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
     setLoading(true);
+    setErrorMsg('');
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.email) {
-      setUsuarioEmail(session.user.email);
-    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    const { data, error } = await supabase
-      .from('processos')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      setProcessos(data);
+    if (error) {
+      setErrorMsg('E-mail ou senha inválidos. Tente novamente.');
+      setLoading(false);
     } else {
-      setProcessos([
-        {
-          id: '1',
-          numero_processo: '0001461-80.2014.5.02.0019',
-          reclamante: 'HILDINEI ANDRADE ALVES BARBOSA SAMPAIO',
-          reclamada: 'MULT FUNCIONAL - MAO DE OBRA TERCEIRIZADA LTDA.',
-          valor_causa: 19076.51,
-          honorarios: 5722.65,
-          status: 'Em andamento',
-        },
-      ]);
+      router.push('/');
     }
-
-    setLoading(false);
-  }
-
-  const totalProcessos = processos.length;
-  const emAndamento = processos.filter((p) => p.status === 'Em andamento' || p.status === 'Ativo').length;
-  const parados = processos.filter((p) => p.status === 'Parado' || p.status === 'Suspenso').length;
-  const totalValorCausa = processos.reduce((acc, p) => acc + (Number(p.valor_causa) || 0), 0);
-  const totalHonorarios = processos.reduce((acc, p) => acc + (Number(p.honorarios) || 0), 0);
-
-  function formatarMoeda(valor: number) {
-    return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <p className="text-slate-500 font-medium">Carregando painel...</p>
-      </div>
-    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-8 bg-neutral-900/80 border border-amber-500/20 p-8 rounded-2xl shadow-2xl backdrop-blur-md">
+        
+        {/* LOGO & CABEÇALHO */}
+        <div className="text-center space-y-3">
+          <div className="inline-flex p-3 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400">
+            <Scale className="w-10 h-10" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-wider text-neutral-100 uppercase font-serif">
+            Gestão Trabalhista
+          </h1>
+          <p className="text-xs text-neutral-400">
+            Acesse o painel de controle e acompanhamento processual.
+          </p>
+        </div>
 
-        {/* 1. CABEÇALHO */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+        {errorMsg && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Gestão Trabalhista</h1>
-            <p className="text-xs text-slate-500 mt-1">Usuário: {usuarioEmail}</p>
+            <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">E-mail</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="advogado@escritorio.com"
+                className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 pl-10 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:border-amber-500 transition-colors"
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button className="px-4 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg transition-colors">
-              Exportar CSV
-            </button>
-
-            <Link
-              href="/prazos"
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
-            >
-              Ver Prazos
-            </Link>
-
-            <Link
-              href="/admin/usuarios"
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
-            >
-              👥 Cadastrar / Ver Usuários
-            </Link>
-
-            <Link
-              href="/processos"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
-            >
-              + Novo Processo
-            </Link>
-
-            <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                router.push('/login');
-              }}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
-            >
-              Sair
-            </button>
-          </div>
-        </div>
-
-        {/* 2. CARDS DE MÉTRICAS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL DE PROCESSOS</p>
-            <p className="text-3xl font-bold text-slate-800">{totalProcessos}</p>
+          <div>
+            <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Senha</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 pl-10 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:border-amber-500 transition-colors"
+              />
+            </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">EM ANDAMENTO</p>
-            <p className="text-3xl font-bold text-blue-600">{emAndamento}</p>
-          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-sm rounded-xl transition-all shadow-lg shadow-amber-600/20 uppercase tracking-wider"
+          >
+            {loading ? 'Acessando...' : 'Entrar no Sistema'}
+          </button>
+        </form>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">PARADOS (+60 DIAS)</p>
-            <p className="text-3xl font-bold text-slate-800">{parados}</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL VALOR DA CAUSA</p>
-            <p className="text-xl font-bold text-slate-800">{formatarMoeda(totalValorCausa)}</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL HONORÁRIOS</p>
-            <p className="text-xl font-bold text-emerald-600">{formatarMoeda(totalHonorarios)}</p>
-          </div>
-        </div>
-
-        {/* 3. TABELA DE PROCESSOS CADASTRADOS */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h2 className="font-bold text-slate-800 text-lg">Processos Cadastrados</h2>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-xs text-slate-700 font-bold uppercase border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-4">Número</th>
-                  <th className="px-6 py-4">Reclamante</th>
-                  <th className="px-6 py-4">Reclamada</th>
-                  <th className="px-6 py-4">Valor da Causa</th>
-                  <th className="px-6 py-4">Honorários</th>
-                  <th className="px-6 py-4">Status / Alerta</th>
-                  <th className="px-6 py-4 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {processos.map((proc, index) => (
-                  <tr key={proc.id || index} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-800">{proc.numero_processo}</td>
-                    <td className="px-6 py-4 uppercase">{proc.reclamante}</td>
-                    <td className="px-6 py-4 uppercase">{proc.reclamada}</td>
-                    <td className="px-6 py-4">{formatarMoeda(proc.valor_causa)}</td>
-                    <td className="px-6 py-4 font-semibold text-emerald-600">
-                      {formatarMoeda(proc.honorarios)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-medium inline-block">
-                        {proc.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center space-x-2">
-                      <button className="text-xs text-blue-600 hover:underline font-medium">Editar</button>
-                      <button className="text-xs text-red-500 hover:underline font-medium">Excluir</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
+        <p className="text-center text-[10px] text-neutral-600">
+          © {new Date().getFullYear()} Gestão de Processos Trabalhistas. Todos os direitos reservados.
+        </p>
       </div>
     </div>
   );
