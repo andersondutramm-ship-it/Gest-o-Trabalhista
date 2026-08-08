@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Users, Plus, Edit3, Trash2, ArrowLeft, Shield, Lock } from 'lucide-react';
+import { Users, Plus, Trash2, Lock, Shield, ArrowLeft } from 'lucide-react';
 
 interface Usuario {
   id: string;
@@ -39,7 +39,7 @@ export default function UsuariosPage() {
     setSalvando(true);
 
     try {
-      // 1. Criar usuário na autenticação do Supabase
+      // 1. Criar o usuário no Auth (utilizando signUp padrão do client para evitar conflito de chave de serviço)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -47,22 +47,39 @@ export default function UsuariosPage() {
 
       if (authError) throw authError;
 
-      // 2. Criar perfil na tabela profiles
+      // 2. Criar ou atualizar o perfil na tabela profiles associado ao ID gerado
       if (authData.user) {
-        await supabase.from('profiles').insert([{ 
+        const { error: insertError } = await supabase.from('profiles').upsert([{ 
           id: authData.user.id, 
           email, 
           role 
         }]);
+
+        if (insertError) throw insertError;
       }
 
       alert('Usuário cadastrado com sucesso!');
       setModalAberto(false);
+      setEmail('');
+      setPassword('');
+      setRole('Usuário');
       carregarUsuarios();
     } catch (error: any) {
+      console.error(error);
       alert('Erro ao cadastrar: ' + error.message);
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function handleExcluirUsuario(id: string) {
+    if (!confirm('Deseja realmente remover este usuário?')) return;
+    
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) {
+      alert('Erro ao excluir: ' + error.message);
+    } else {
+      carregarUsuarios();
     }
   }
 
@@ -71,68 +88,142 @@ export default function UsuariosPage() {
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* CABEÇALHO */}
-        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex justify-between items-center">
+        <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-wrap justify-between items-center gap-4">
           <div>
             <h1 className="text-xl font-bold text-amber-400 flex items-center gap-2 font-serif uppercase tracking-wider">
               <Users className="w-6 h-6" /> Gestão de Usuários
             </h1>
+            <p className="text-xs text-neutral-400 mt-1">Controle de acessos e permissões do sistema</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setModalAberto(true)} className="px-4 py-2 bg-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setModalAberto(true)} 
+              className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-600/20 uppercase tracking-wider"
+            >
               <Plus className="w-4 h-4" /> Novo Usuário
             </button>
-            <Link href="/" className="px-4 py-2 border border-neutral-800 text-xs rounded-xl">Voltar</Link>
+            <Link href="/" className="px-4 py-2 bg-neutral-950 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold rounded-xl flex items-center gap-2">
+              <ArrowLeft className="w-4 h-4" /> Voltar ao Painel
+            </Link>
           </div>
         </div>
 
-        {/* LISTA */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+        {/* LISTA DE USUÁRIOS */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
           <table className="w-full text-left text-xs text-neutral-300">
-            <thead className="bg-neutral-950 text-neutral-400 border-b border-neutral-800 uppercase">
+            <thead className="bg-neutral-950 text-neutral-400 border-b border-neutral-800 uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4">E-mail</th>
-                <th className="px-6 py-4">Cargo</th>
+                <th className="px-6 py-4">Cargo / Função</th>
+                <th className="px-6 py-4">Data de Criação</th>
                 <th className="px-6 py-4 text-center">Ações</th>
               </tr>
             </thead>
-            <tbody>
-              {usuarios.map((u) => (
-                <tr key={u.id} className="border-b border-neutral-800">
-                  <td className="px-6 py-4">{u.email}</td>
-                  <td className="px-6 py-4">{u.role}</td>
-                  <td className="px-6 py-4 text-center">
-                    <button onClick={async () => { await supabase.from('profiles').delete().eq('id', u.id); carregarUsuarios(); }} className="text-red-400"><Trash2 className="w-4 h-4"/></button>
-                  </td>
+            <tbody className="divide-y divide-neutral-800/60">
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-neutral-500">Carregando usuários...</td>
                 </tr>
-              ))}
+              ) : usuarios.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-neutral-500">Nenhum usuário cadastrado.</td>
+                </tr>
+              ) : (
+                usuarios.map((u) => (
+                  <tr key={u.id} className="hover:bg-neutral-800/30 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-neutral-200">{u.email}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2.5 py-1 bg-neutral-950 border border-neutral-800 text-amber-400 rounded-md text-[10px] flex items-center gap-1 w-fit">
+                        <Shield className="w-3 h-3" /> {u.role || 'Usuário'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-neutral-400">
+                      {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <button 
+                        onClick={() => handleExcluirUsuario(u.id)} 
+                        className="p-1.5 text-neutral-400 hover:text-red-400 rounded-lg hover:bg-neutral-800 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL DE CADASTRO COM SENHA */}
+      {/* MODAL DE CADASTRO */}
       {modalAberto && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4">
-          <form onSubmit={handleSalvarUsuario} className="bg-neutral-900 p-6 rounded-2xl w-full max-w-sm space-y-4 border border-neutral-800">
-            <h2 className="text-lg font-bold">Cadastrar Acesso</h2>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <h2 className="text-lg font-bold text-neutral-100 flex items-center gap-2 border-b border-neutral-800 pb-3">
+              <Users className="w-5 h-5 text-amber-400" /> Cadastrar Novo Acesso
+            </h2>
             
-            <input type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-neutral-950 p-2.5 rounded-lg border border-neutral-700 text-xs" />
-            
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
-              <input type="password" placeholder="Senha inicial" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-neutral-950 p-2.5 pl-10 rounded-lg border border-neutral-700 text-xs" />
-            </div>
+            <form onSubmit={handleSalvarUsuario} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">E-mail *</label>
+                <input 
+                  type="email" 
+                  placeholder="usuario@escritorio.com" 
+                  required 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500" 
+                />
+              </div>
 
-            <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full bg-neutral-950 p-2.5 rounded-lg border border-neutral-700 text-xs">
-              <option value="Usuário">Usuário</option>
-              <option value="Administrador">Administrador</option>
-            </select>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Senha Inicial *</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-neutral-500" />
+                  <input 
+                    type="password" 
+                    placeholder="••••••••" 
+                    required 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
+                    className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 pl-10 pr-4 py-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500" 
+                  />
+                </div>
+              </div>
 
-            <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setModalAberto(false)} className="flex-1 p-2 rounded-lg border border-neutral-700">Cancelar</button>
-              <button type="submit" disabled={salvando} className="flex-1 p-2 bg-amber-600 rounded-lg text-neutral-950 font-bold">{salvando ? 'Criando...' : 'Criar Acesso'}</button>
-            </div>
-          </form>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-neutral-400 mb-1">Função / Cargo</label>
+                <select 
+                  value={role} 
+                  onChange={(e) => setRole(e.target.value)} 
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 p-2.5 rounded-xl text-xs focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Usuário">Usuário</option>
+                  <option value="Administrador">Administrador</option>
+                  <option value="Advogado">Advogado</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-neutral-800">
+                <button 
+                  type="button" 
+                  onClick={() => setModalAberto(false)} 
+                  className="px-4 py-2 border border-neutral-800 text-neutral-400 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={salvando} 
+                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-neutral-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-600/20 uppercase tracking-wider"
+                >
+                  {salvando ? 'Criando...' : 'Criar Acesso'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
