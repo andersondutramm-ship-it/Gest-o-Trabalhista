@@ -29,22 +29,19 @@ export default function DashboardPage() {
   async function carregarDados() {
     setLoading(true);
 
-    // Obtém o usuário logado no Supabase (se houver)
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.email) {
       setUsuarioEmail(session.user.email);
     }
 
-    // Busca os processos da tabela
     const { data, error } = await supabase
       .from('processos')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
+    if (!error && data && data.length > 0) {
       setProcessos(data);
     } else {
-      // Dados de exemplo para renderizar caso a tabela esteja vazia ou em configuração
       setProcessos([
         {
           id: '1',
@@ -61,7 +58,16 @@ export default function DashboardPage() {
     setLoading(false);
   }
 
-  // Cálculos dos Cards
+  async function handleLogout() {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.log('Logout efetuado localmente');
+    }
+    // Força o redirecionamento garantido para a página de login
+    window.location.href = '/login';
+  }
+
   const totalProcessos = processos.length;
   const emAndamento = processos.filter((p) => p.status === 'Em andamento' || p.status === 'Ativo').length;
   const parados = processos.filter((p) => p.status === 'Parado' || p.status === 'Suspenso').length;
@@ -84,7 +90,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-slate-100 p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* 1. CABEÇALHO */}
+        {/* CABEÇALHO */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Gestão Trabalhista</h1>
@@ -104,6 +110,13 @@ export default function DashboardPage() {
             </Link>
 
             <Link
+              href="/admin/usuarios"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
+            >
+              👥 Usuários
+            </Link>
+
+            <Link
               href="/processos"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
             >
@@ -111,10 +124,7 @@ export default function DashboardPage() {
             </Link>
 
             <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                router.push('/login');
-              }}
+              onClick={handleLogout}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
             >
               Sair
@@ -122,40 +132,35 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 2. CARDS DE MÉTRICAS */}
+        {/* CARDS DE MÉTRICAS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Card 1 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL DE PROCESSOS</p>
             <p className="text-3xl font-bold text-slate-800">{totalProcessos}</p>
           </div>
 
-          {/* Card 2 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">EM ANDAMENTO</p>
             <p className="text-3xl font-bold text-blue-600">{emAndamento}</p>
           </div>
 
-          {/* Card 3 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">PARADOS (+60 DIAS)</p>
             <p className="text-3xl font-bold text-slate-800">{parados}</p>
           </div>
 
-          {/* Card 4 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL VALOR DA CAUSA</p>
             <p className="text-xl font-bold text-slate-800">{formatarMoeda(totalValorCausa)}</p>
           </div>
 
-          {/* Card 5 */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL HONORÁRIOS</p>
             <p className="text-xl font-bold text-emerald-600">{formatarMoeda(totalHonorarios)}</p>
           </div>
         </div>
 
-        {/* 3. TABELA DE PROCESSOS CADASTRADOS */}
+        {/* TABELA DE PROCESSOS CADASTRADOS */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100">
             <h2 className="font-bold text-slate-800 text-lg">Processos Cadastrados</h2>
