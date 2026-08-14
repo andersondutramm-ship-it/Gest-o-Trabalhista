@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { 
   Scale, Users, Calendar, LogOut, Plus, Search, 
   FileSpreadsheet, Edit3, Trash2, AlertTriangle, FileText, X
@@ -20,7 +20,7 @@ interface Processo {
   ultima_movimentacao: string;
 }
 
-export default function DashboardProcessosPage() {
+export default function Home() {
   const [loading, setLoading] = useState(true);
   const [processos, setProcessos] = useState<Processo[]>([]);
   const [busca, setBusca] = useState('');
@@ -48,7 +48,7 @@ export default function DashboardProcessosPage() {
     const { data } = await supabase
       .from('processos')
       .select('*')
-      .order('reclamante', { ascending: true }); // Ordenação alfabética pelo Reclamante
+      .order('reclamante', { ascending: true });
 
     if (data) setProcessos(data);
     setLoading(false);
@@ -132,20 +132,21 @@ export default function DashboardProcessosPage() {
   }
 
   function estaParadoMais60Dias(dataIso: string) {
+    if (!dataIso) return false;
     const diffTime = Math.abs(new Date().getTime() - new Date(dataIso).getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 60;
   }
 
   const processosFiltrados = processos.filter(p => 
-    p.reclamante.toLowerCase().includes(busca.toLowerCase()) ||
-    p.numero_processo.toLowerCase().includes(busca.toLowerCase())
+    (p.reclamante && p.reclamante.toLowerCase().includes(busca.toLowerCase())) ||
+    (p.numero_processo && p.numero_processo.toLowerCase().includes(busca.toLowerCase()))
   );
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans">
       
-      {/* CABEÇALHO SUPERIOR DA BANDEIRA */}
+      {/* CABEÇALHO SUPERIOR */}
       <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap justify-between items-center gap-4">
           
@@ -256,8 +257,8 @@ export default function DashboardProcessosPage() {
                         <td className="px-6 py-4 font-bold text-amber-400/90 uppercase">{p.reclamante}</td>
                         <td className="px-6 py-4 uppercase text-neutral-300">{p.reclamada}</td>
                         <td className="px-6 py-4">
-                          <div>Causa: <span className="text-neutral-200 font-semibold">R$ {p.valor_causa.toLocaleString('pt-BR')}</span></div>
-                          <div className="text-[10px] text-emerald-400">Honorários: R$ {p.honorarios.toLocaleString('pt-BR')}</div>
+                          <div>Causa: <span className="text-neutral-200 font-semibold">R$ {(p.valor_causa || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
+                          <div className="text-[10px] text-emerald-400">Honorários: R$ {(p.honorarios || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
                         </td>
                         <td className="px-6 py-4 space-y-1">
                           <span className="inline-block px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full font-medium">
