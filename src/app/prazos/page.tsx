@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Calendar, Plus, Trash2, ArrowLeft, Clock, CheckCircle2 } from 'lucide-react';
+import { Calendar, Plus, Trash2, ArrowLeft, Clock } from 'lucide-react';
 
 interface Processo {
   id: string;

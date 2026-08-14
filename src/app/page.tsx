@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { 
   Scale, Users, Calendar, LogOut, Plus, Search, 
   FileSpreadsheet, Edit3, Trash2, AlertTriangle, FileText, X
